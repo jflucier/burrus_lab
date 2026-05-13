@@ -197,7 +197,7 @@ extract_and_feature() {
     fi
 
     local header="${n}_${chr}_chrlen${max_len}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand}_relstart${rel_start}_relend${rel_end}"
-    local full_out="${XTRACTOUT}/out/${n}_seqs.fasta"
+    local full_out="${XTRACTOUT}/out/${n}_chrlen${max_len}_seqs.fasta"
 
     # 4. Extract
     if [ "$strand" == "plus" ]; then
@@ -207,7 +207,7 @@ extract_and_feature() {
     fi
 
     # 5. Output Feature Row
-    echo -e "${blast_fname}\t${header}\t${qid}\t${assembly}\t${chr}\t${gstart}\t${gend}\t${gstrand}\t${pident}\t${qcov}\t${gene_name}\t${gene_desc}\t${rel_start}\t${rel_end}"
+    echo -e "${blast_fname}\t${header}\t${qid}\t${assembly}\t${chr}\t${max_len}\t${gstart}\t${gend}\t${gstrand}\t${pident}\t${qcov}\t${gene_name}\t${gene_desc}\t${rel_start}\t${rel_end}"
 
     # 6. Cleanup
     rm -f "$tmp_fa" "$tmp_fa".fai
@@ -219,12 +219,27 @@ do_teris_search() {
     local n=$(basename "$fa" .fasta)
     local out_file="${TERISOUT}/cmsearch/${n}_structural_hits"
 
+    # 1. Extract max_len directly from the FASTA filename string using Bash regex
+    if [[ "$n" =~ _chrlen([0-9]+) ]]; then
+        local max_len="${BASH_REMATCH[1]}"
+    else
+        echo "Error: Could not parse max_len from filename: $fa" >&2
+        return 1
+    fi
+
+    # 2. Convert base pairs to Megabases (Mb) and divide by 2 for --toponly
+    local half_contig_mb=$(echo "scale=6; ($max_len / 1000000) / 2" | bc)
+
     # cmsearch is the tool for searching one CM against many sequences
+    #--max --toponly -Z <half_of_contig_Mb>
     cmsearch \
-    --cpu 1 --notrunc -E 0.1 \
-    -o ${out_file}.out \
-    --tblout ${out_file}.tbl --fmt 3 \
-    ${TERIS_MODEL} "$fa" > /dev/null
+      --cpu 1 \
+      --max \
+      --toponly \
+      -Z "${half_contig_mb}" \
+      -o ${out_file}.out \
+      --tblout ${out_file}.tbl --fmt 3 \
+      ${TERIS_MODEL} "$fa" > /dev/null
 
     # 2. Check if hits were found (check .tbl file)
     # If no hits, delete all associated files and return
@@ -253,12 +268,26 @@ do_oriis_search() {
     local n=$(basename "$fa" .fasta)
     local out_file="${ORIISOUT}/cmsearch/${n}_structural_hits"
 
+        # 1. Extract max_len directly from the FASTA filename string using Bash regex
+    if [[ "$n" =~ _chrlen([0-9]+) ]]; then
+        local max_len="${BASH_REMATCH[1]}"
+    else
+        echo "Error: Could not parse max_len from filename: $fa" >&2
+        return 1
+    fi
+
+    # 2. Convert base pairs to Megabases (Mb) and divide by 2 for --toponly
+    local half_contig_mb=$(echo "scale=6; ($max_len / 1000000) / 2" | bc)
+
     # cmsearch is the tool for searching one CM against many sequences
     cmsearch \
-    --cpu 1 --notrunc -E 0.1 \
-    -o ${out_file}.out \
-    --tblout ${out_file}.tbl --fmt 3 \
-    ${ORIIS_MODEL} "$fa" > /dev/null
+      --cpu 1 \
+      --max \
+      --toponly \
+      -Z "${half_contig_mb}" \
+      -o ${out_file}.out \
+      --tblout ${out_file}.tbl --fmt 3 \
+      ${ORIIS_MODEL} "$fa" > /dev/null
 
     # 2. Check if hits were found (check .tbl file)
     # If no hits, delete all associated files and return
@@ -435,7 +464,7 @@ FILTERED_TSV=${TNPAOUT}/blast.qcov${COVERAGE}.filtered.tsv
 mkdir -p ${XTRACTOUT}/out/
 rm -f ${XTRACTOUT}/out/*
 
-echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
+echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
 # Use Parallel to run the extraction
 total_lines=$(tail -n +2 "$FILTERED_TSV" | wc -l)
 tail -n +2 "$FILTERED_TSV" | \
