@@ -196,7 +196,7 @@ extract_and_feature() {
         exp_end=$max_len
     fi
 
-    local header="${n}_${chr}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand}_relstart${rel_start}_relend${rel_end}"
+    local header="${n}_${chr}_chrlen${max_len}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand}_relstart${rel_start}_relend${rel_end}"
     local full_out="${XTRACTOUT}/out/${n}_seqs.fasta"
 
     # 4. Extract
