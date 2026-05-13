@@ -112,7 +112,7 @@ do_parallel_blast_pep() {
     -db "$tmp_db" \
     -num_threads 1 \
     -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore slen gaps stitle" | \
-    awk -v file_name="$fa" -v min_cov="$COVERAGE" -v OFS="\t" '{
+    awk -v min_cov="$COVERAGE" -v OFS="\t" '{
         true_length = $4 - $14;
         cov = (true_length / $13) * 100;
         if (cov >= min_cov) {
@@ -141,7 +141,7 @@ do_parallel_blast_pep() {
 
             # 5. Output all columns
             # $0 includes original 15 columns, then we append our 8 extracted ones
-            print file_name, $0, sprintf("%.4f", cov), ass, chr, g_start, g_end, strand, gene_name, gene_desc;
+            print $0, sprintf("%.4f", cov), ass, chr, g_start, g_end, strand, gene_name, gene_desc;
 
         }
     }' > "$out_file"
@@ -161,7 +161,7 @@ extract_and_feature() {
     local n=$(basename "$blast_fname" .pep_tnpa_hits.txt)
 
     # 1. Find Genome (Lowercase logic included for safety)
-#    local fa_gz=$(find "${GENOMES}" -path "*/dna/${n}*.dna.toplevel.fa.gz" | head -n 1)
+    local fa_gz=$(find "${GENOMES}" -path "*/dna/${n}*.dna.toplevel.fa.gz" | head -n 1)
     [[ -z "$fa_gz" ]] && { echo "Error: Genome $n not found" >&2; return 1; }
 
     # 2. Prepare Temp (Use BASHPID for thread safety)
@@ -452,7 +452,7 @@ else
 
   find "${TNPAOUT}/blast.qcov${COVERAGE}" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${TNPAOUT}/blast.qcov${COVERAGE}.tsv"
   tail -n +2 "${TNPAOUT}/blast.qcov${COVERAGE}.tsv" | \
-      sort -t$'\t' -k2,2 -k17,17rn -k4,4rn | \
+      sort -t$'\t' -k1,1 -k17,17rn -k4,4rn | \
       awk -F'\t' '!seen[$1]++' >> "${TNPAOUT}/blast.qcov${COVERAGE}.filtered.tsv"
 fi
 
