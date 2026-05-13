@@ -191,10 +191,9 @@ extract_and_feature() {
     fi
 
     local exp_end=$(( gend + FLANKING_SEQ_LEN ))
-    local rel_end=$(( FLANKING_SEQ_LEN + gend - gstart ))
+    local rel_end=$(( rel_start + gend - gstart ))
     if [ "$exp_end" -gt "$max_len" ]; then
         exp_end=$max_len
-        rel_end=$(( rel_start + gend - gstart ))
     fi
 
     local header="${n}_${chr}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand}_relstart${rel_start}_relend${rel_end}"
