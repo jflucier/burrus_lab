@@ -169,34 +169,34 @@ extract_and_feature() {
     gunzip -c "$fa_gz" > "$tmp_fa"
     samtools faidx "$tmp_fa"
 
-    # 3. Coordinate Logic
-    local strand="plus"
-    [[ "$gstrand" == "-" ]] && strand="minus"
-
-    # Get max length from index
     local max_len=$(awk -v s="${chr}" '$1==s {print $2}' "${tmp_fa}.fai")
-
-    # Prevent math errors if chr not found in this specific genome
     if [[ -z "$max_len" || ! "$max_len" =~ ^[0-9]+$ ]]; then
-         echo "Error: Chr $chr not found in $n" >&2
-         rm -f "$tmp_fa"*
-         return 1
+        rm -f "$tmp_fa"*
+        echo "Error: chr length not defined " >&2;
+        return 1
     fi
 
     local exp_start=$(( gstart - FLANKING_SEQ_LEN ))
-    local rel_start=$FLANKING_SEQ_LEN
-    if [ "$exp_start" -lt 1 ]; then
-        exp_start=1
-        rel_start=${gstart}
-    fi
+    [[ "$exp_start" -lt 1 ]] && exp_start=1
 
     local exp_end=$(( gend + FLANKING_SEQ_LEN ))
-    local rel_end=$(( rel_start + gend - gstart ))
-    if [ "$exp_end" -gt "$max_len" ]; then
-        exp_end=$max_len
+    [[ "$exp_end" -gt "$max_len" ]] && exp_end="$max_len"
+
+    local rel_start rel_end
+    if [[ "$gstrand" == "+" ]]; then
+        # On Plus strand: local start = (genomic start of gene - genomic start of window) + 1
+        rel_start=$(( gstart - exp_start + 1 ))
+        rel_end=$(( gend - exp_start + 1 ))
+        local strand_label="plus"
+    else
+        # On Minus strand (RC): local start = (genomic end of window - genomic end of gene) + 1
+        # Because RC flips the sequence, the genomic END of the gene is now closer to the local START.
+        rel_start=$(( exp_end - gend + 1 ))
+        rel_end=$(( exp_end - gstart + 1 ))
+        local strand_label="minus"
     fi
 
-    local header="${n}_${chr}_chrlen${max_len}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand}_relstart${rel_start}_relend${rel_end}"
+    local header="${n}_${chr}_chrlen${max_len}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand_label}_relstart${rel_start}_relend${rel_end}"
     local full_out="${XTRACTOUT}/out/${n}_chrlen${max_len}_seqs.fasta"
 
     # 4. Extract
