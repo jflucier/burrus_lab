@@ -667,10 +667,9 @@ FROM tnpA_features f
       AND o.strand = '+'
       AND CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
   JOIN orf121 orf on orf.target_name=f.tnpa_seqsig
-  LEFT JOIN orf121_best b on b.orf121_name=orf.orf121_name
+  JOIN orf121_best b on b.orf121_name=orf.orf121_name
   JOIN tnpA_seqs s on s.tnpa_seqsig=f.tnpa_seqsig
 WHERE
-  -- (t.target_from_coord IS NULL OR (CAST(f.rel_start AS INT) >= CAST(t.target_from_coord AS INT) - 10 AND CAST(orf.end AS INT) > CAST(t.target_from_coord AS INT)))
   CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
   AND CAST(orf.end AS INT) <= CAST(f.rel_start AS INT) + 10
   AND (t.target_from_coord IS NULL OR (CAST(f.rel_start AS INT) >= CAST(t.target_from_coord AS INT) - 10 AND CAST(orf.end AS INT) > CAST(t.target_from_coord AS INT)))
