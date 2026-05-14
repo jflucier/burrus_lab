@@ -393,24 +393,11 @@ do_translation() {
         # 2. Calculate coverage: (Alignment Length / Subject Length) * 100
         current_cov = ($4 / $13) * 100;
 
-        # 3. Use trimmed_id as the key to find the best hit across all fragments
-        if (current_cov > max_cov[trimmed_id]) {
-            max_cov[trimmed_id] = current_cov;
-
-            # 4. Reconstruct line: $1=Orig, $2=Trimmed, $3...rest of line
-            # We shift original columns 2..NF to 3..NF+1
-            line = orig_name "\t" trimmed_id;
-            for (i=2; i<=NF; i++) {
-                line = line "\t" $i;
-            }
-
-            best_row[trimmed_id] = line;
+        printf "%s\t%s", orig_name, trimmed_id;
+        for (i=2; i<=NF; i++) {
+            printf "\t%s", $i;
         }
-      }
-      END {
-        for (q in best_row) {
-            print best_row[q]
-        }
+        printf "\t%.2f\n", current_cov;
       }' > "${blastout_file}.blast_hits.tsv"
     fi
 }
@@ -563,7 +550,7 @@ parallel --jobs ${NCORES} --progress do_translation {}
 echo -e "orf121_name\ttarget_name\tstart\tend\tlength\tsequence" > ${ORF121OUT}/all.orf121.tsv
 cat ${ORF121OUT}/translations/*.tsv >> ${ORF121OUT}/all.orf121.tsv
 
-echo -e "orf121_name\ttarget_name\torf121_hit\tpident\ttarget_length\tmismatch\tgapopen\ttarget_start\ttarget_end\torf121_hit_start\torf121_hit_end\tevalue\tbitscore\torf121_hit_length\ttarget_align\torf121_hit_align" > ${ORF121OUT}/best_hits.orf121.tsv
+echo -e "orf121_name\ttarget_name\torf121_hit\tpident\ttarget_length\tmismatch\tgapopen\ttarget_start\ttarget_end\torf121_hit_start\torf121_hit_end\tevalue\tbitscore\torf121_hit_length\ttarget_align\torf121_hit_align\tscov" > ${ORF121OUT}/best_hits.orf121.tsv
 cat ${ORF121OUT}/translations_best/*.tsv >> ${ORF121OUT}/best_hits.orf121.tsv
 
 ##### Step 6: generate signature report #####
@@ -642,6 +629,7 @@ SELECT
   b.gapopen orf121_hit_gapopen,
   b.evalue orf121_hit_evalue,
   b.bitscore orf121_hit_bitscore,
+  b.scov orf121_hit_coverage,
   substr(s.seq, t.target_from_coord, (t.target_to_coord - t.target_from_coord + 1)) as terIS_seq,
   substr(
       s.seq,
