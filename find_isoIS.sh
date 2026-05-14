@@ -157,7 +157,7 @@ extract_and_feature() {
 
     # Use read to split the tab-separated line into variables
     # This must match your 24-column TSV structure exactly
-    IFS=$'\t' read -r fa_gz blast_fname qid sid pident len mis gap qstart qend sstart send eval bit slen gaps stitle qcov assembly chr gstart gend gstrand gene_name gene_desc <<< "$line"
+    IFS=$'\t' read -r blast_fname qid sid pident len mis gap qstart qend sstart send eval bit slen gaps stitle qcov assembly chr gstart gend gstrand gene_name gene_desc <<< "$line"
     local n=$(basename "$blast_fname" .pep_tnpa_hits.txt)
 
     # 1. Find Genome (Lowercase logic included for safety)
