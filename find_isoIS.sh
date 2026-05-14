@@ -553,6 +553,14 @@ cat ${ORF121OUT}/translations/*.tsv >> ${ORF121OUT}/all.orf121.tsv
 echo -e "orf121_name\ttarget_name\torf121_hit\tpident\ttarget_length\tmismatch\tgapopen\ttarget_start\ttarget_end\torf121_hit_start\torf121_hit_end\tevalue\tbitscore\torf121_hit_length\ttarget_align\torf121_hit_align\tscov" > ${ORF121OUT}/best_hits.orf121.tsv
 cat ${ORF121OUT}/translations_best/*.tsv >> ${ORF121OUT}/best_hits.orf121.tsv
 
+head -n 1 ${ORF121OUT}/best_hits.orf121.tsv > ${ORF121OUT}/best_hits.orf121.filtered.tsv
+
+# 2. Sort by target_name (Col 2) then scov (Col 17) numerically descending
+# 3. Use awk to keep only the first occurrence (the highest coverage) for each target
+tail -n +2 ${ORF121OUT}/best_hits.orf121.tsv | \
+sort -t$'\t' -k1,1 -k17,17nr | \
+awk -F'\t' '!seen[$1]++' >> ${ORF121OUT}/best_hits.orf121.filtered.tsv
+
 ##### Step 6: generate signature report #####
 # import blast results
 sqlitedb="${BASE_PATH}/${n}_qcov${COVERAGE}_${FLANKING_SEQ_LEN}.db"
@@ -595,7 +603,7 @@ EOF
 
 sqlite3 ${sqlitedb} <<EOF
 .mode tabs
-.import "${ORF121OUT}/best_hits.orf121.tsv" orf121_best
+.import "${ORF121OUT}/best_hits.orf121.filtered.tsv" orf121_best
 .quit
 EOF
 
