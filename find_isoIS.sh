@@ -236,6 +236,7 @@ do_teris_search() {
       --cpu 1 \
       --max \
       --toponly \
+      -E 0.1 \
       -Z "${half_contig_mb}" \
       -o ${out_file}.out \
       --tblout ${out_file}.tbl --fmt 3 \
@@ -284,6 +285,7 @@ do_oriis_search() {
       --cpu 1 \
       --max \
       --toponly \
+      -E 0.1 \
       -Z "${half_contig_mb}" \
       -o ${out_file}.out \
       --tblout ${out_file}.tbl --fmt 3 \
@@ -625,6 +627,7 @@ SELECT
   f.gene_desc tnpA_hit_genedesc,
   t.target_from_coord terIS_start,
   t.target_to_coord terIS_end,
+  t.evalue terIS_evalue,
   orf.start orf121_pred_start,
   orf.end orf121_pred_end,
   orf.length orf121_pred_length,
@@ -632,6 +635,7 @@ SELECT
   f.rel_end tnpA_rel_end,
   o.target_from_coord oriIS_start,
   o.target_to_coord oriIS_end,
+  o.evalue oriIS_evalue,
   orf.sequence orf121_pred_sequence,
   b.pident orf121_hit_pident,
   b.mismatch orf121_hit_mismatch,
