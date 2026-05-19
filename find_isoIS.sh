@@ -43,8 +43,8 @@ n=${b%.fa}
 export BASE_PATH="${ROOT_PATH}/${n}_qcov${COVERAGE}"
 
 # --- Set Model Defaults (if not provided via flags) ---
-export TERIS_MODEL=${TERIS_MODEL:-"/fast/def-burrusvi/20260323_isoIS91/models/isoforms_IS91_terIS_nt_aln.cm"}
-export ORIIS_MODEL=${ORIIS_MODEL:-"/fast/def-burrusvi/20260323_isoIS91/models/isoforms_IS91_oriIS_nt_aln.cm"}
+export TERIS_MODEL=${TERIS_MODEL:-"/fast/def-burrusvi/20260512_isoIS_others/models/isoforms_IS91_IS801_1294b_terIS_nt.cm"}
+export ORIIS_MODEL=${ORIIS_MODEL:-"/fast/def-burrusvi/20260512_isoIS_others/models/isoforms_IS91_IS801_1294b_oriIS_nt.cm"}
 export ORF121_BLASTDB=${ORF121_BLASTDB:-"/fast/def-burrusvi/20260323_isoIS91/IS_fasta/isoforms_IS91_orf121_aa.fa"}
 export FLANKING_SEQ_LEN=${FLANKING_SEQ_LEN:-"2000"}
 
@@ -464,40 +464,6 @@ parallel --jobs "$NCORES" extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.feat
 echo -e "tnpa_seqsig\tseq" > ${XTRACTOUT}/tnpA_seqs.fastas.tsv
 awk '/^>/ { if (header) print header "\t" seq; header = substr($0,2); seq = ""; next } { seq = seq $0 } END { if (header) print header "\t" seq }' ${XTRACTOUT}/out/*_seqs.fasta >> ${XTRACTOUT}/tnpA_seqs.fastas.tsv
 
-### RUN ONCE: lets find terIS et oriIS in extracted seqs ####
-#module purge
-#ml StdEnv/2020 mafft/7.471
-#mkdir terIS_search
-#mafft --auto IS_fasta/isoforms_IS91_terIS_nt.fa > terIS_search/isoforms_IS91_terIS_nt_aln.fasta
-#mkdir oriIS_search
-#mafft --auto IS_fasta/isoforms_IS91_oriIS_nt.fa > oriIS_search/isoforms_IS91_oriIS_nt_aln.fasta
-#
-## Predict consensus structure and output Stockholm format
-#ml viennarna/2.5.1
-#RNAalifold --aln-stk=isoforms_IS91_terIS_nt_aln terIS_search/isoforms_IS91_terIS_nt_aln.fasta
-#mv RNAalifold_results.stk terIS_search/isoforms_IS91_terIS_nt_aln.stk
-#sed -n '1,/^\/\//p' terIS_search/isoforms_IS91_terIS_nt_aln.stk > terIS_search/isoforms_IS91_terIS_nt_aln.clean.stk
-#RNAalifold --aln-stk=isoforms_IS91_oriIS_nt_aln oriIS_search/isoforms_IS91_oriIS_nt_aln.fasta
-#mv isoforms_IS91_oriIS_nt_aln.stk oriIS_search/isoforms_IS91_oriIS_nt_aln.stk
-#sed -n '1,/^\/\//p' oriIS_search/isoforms_IS91_oriIS_nt_aln.stk > oriIS_search/isoforms_IS91_oriIS_nt_aln.clean.stk
-#
-## 2. Add an explicit name tag to the header if it's missing
-#if ! grep -q "#=GF ID" terIS_search/isoforms_IS91_terIS_nt_aln.clean.stk; then
-#    sed -i '2i #=GF ID isoforms_IS91_terIS_nt' terIS_search/isoforms_IS91_terIS_nt_aln.clean.stk
-#fi
-#if ! grep -q "#=GF ID" oriIS_search/isoforms_IS91_oriIS_nt_aln.clean.stk; then
-#    sed -i '2i #=GF ID isoforms_IS91_oriIS_nt' oriIS_search/isoforms_IS91_oriIS_nt_aln.clean.stk
-#fi
-#
-#module purge
-#ml  StdEnv/2023  gcc/12.3 infernal/1.1.5
-## 1. Build the Covariance Model
-#cmbuild terIS_search/isoforms_IS91_terIS_nt_aln.cm terIS_search/isoforms_IS91_terIS_nt_aln.clean.stk
-#cmbuild oriIS_search/isoforms_IS91_oriIS_nt_aln.cm oriIS_search/isoforms_IS91_oriIS_nt_aln.clean.stk
-## 2. Calibrate
-#cmcalibrate terIS_search/isoforms_IS91_terIS_nt_aln.cm
-#cmcalibrate oriIS_search/isoforms_IS91_oriIS_nt_aln.cm
-
 ##### Step 3: finding terIS #####
 echo "##### finding terIS #####"
 echo "Using Model: ${TERIS_MODEL}"
@@ -642,14 +608,14 @@ SELECT
   substr(
       s.seq,
       orf.start,
-      length(orf.sequence) * 3
+      (length(orf.sequence) + 1) * 3
   ) AS orf121_nt_seq,
   substr(s.seq,
       CASE
           WHEN f.strand = '+' THEN
               (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
           WHEN f.strand = '-' THEN
-              (CASE WHEN (f.end - f.start + ${FLANKING_SEQ_LEN} + ${FLANKING_SEQ_LEN} + 1) = LENGTH(s.seq) THEN ${FLANKING_SEQ_LEN} ELSE (LENGTH(s.seq) - f.end) END + 1)
+              (CASE WHEN (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN}) > CAST(f.chr_len AS INT) THEN (CAST(f.chr_len AS INT) - CAST(f.end AS INT) + 1) ELSE (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN} - CAST(f.end AS INT) + 1) END)
       END,
       (f.end - f.start + 1)
   ) AS tnpA_nt_seq,
