@@ -4,6 +4,7 @@
 NCORES=32
 COVERAGE=75
 GENOMES="/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
+SKIP_BLAST_STEP="false"
 
 # --- Initialize Mandatory Variables as Empty ---
 IS_FA=""
