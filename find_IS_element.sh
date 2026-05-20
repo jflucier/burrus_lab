@@ -71,27 +71,29 @@ do_parallel_blast() {
       -num_threads 1 \
       -qcov_hsp_perc ${COVERAGE} \
       -perc_identity 95 \
-      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" | \
-    awk -v OFS="\t" '{
-      # 2. Extract stitle (Column 15)
-      full_title = $14;
-      for (i=15; i<=NF; i++) full_title = full_title " " $i;
-
-      split(full_title, words, " ");
-      loc_str = words[2];
-
-      # 3. Parse Location (assembly:chr:start:end:strand)
-      n = split(loc_str, loc, ":");
-      strand = (loc[n] == "1") ? "+" : "-";
-      g_end  = loc[n-1];
-      g_start = loc[n-2];
-      chr    = loc[n-3];
-      ass    = loc[n-4];
-
-      # 5. Output all columns
-      # $0 includes original 15 columns, then we append our 8 extracted ones
-      print $0, ass, chr, g_start, g_end, strand;
-    }' > "$out_file"
+      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send sstrand evalue bitscore qcovs stitle" \
+      -out "$out_file"
+#      | \
+#    awk -v OFS="\t" '{
+#      # 2. Extract stitle (Column 15)
+#      full_title = $15;
+#      for (i=16; i<=NF; i++) full_title = full_title " " $i;
+#
+#      split(full_title, words, " ");
+#      loc_str = words[2];
+#
+#      # 3. Parse Location (assembly:chr:start:end:strand)
+#      n = split(loc_str, loc, ":");
+#      strand = (loc[n] == "1") ? "+" : "-";
+#      g_end  = loc[n-1];
+#      g_start = loc[n-2];
+#      chr    = loc[n-3];
+#      ass    = loc[n-4];
+#
+#      # 5. Output all columns
+#      # $0 includes original 15 columns, then we append our 8 extracted ones
+#      print $0, ass, chr, g_start, g_end, strand;
+#    }' > "$out_file"
 
     # 3. Cleanup
     rm "$tmp_fa" "$tmp_db".n*
@@ -104,7 +106,7 @@ extract_and_feature() {
 
     # Use read to split the tab-separated line into variables
     # This must match your 24-column TSV structure exactly
-    IFS=$'\t' read -r blast_fname qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle ass chr gstart gend gstrand <<< "$line"
+    IFS=$'\t' read -r blast_fname qseqid sseqid pident length mismatch gapopen qstart qend sstart send sstrand evalue bitscore qcovs stitle <<< "$line"
     local n=$(basename "$blast_fname" .dna.toplevel.is_element_hits.txt)
 
     # 1. Find Genome (Lowercase logic included for safety)
@@ -130,7 +132,7 @@ extract_and_feature() {
     [[ "$exp_end" -gt "$max_len" ]] && exp_end="$max_len"
 
     local rel_start rel_end
-    if [[ "$gstrand" == "+" ]]; then
+    if [[ "$sstrand" == "+" ]]; then
         # On Plus strand: local start = (genomic start of gene - genomic start of window) + 1
         rel_start=$(( gstart - exp_start + 1 ))
         rel_end=$(( gend - exp_start + 1 ))
@@ -147,14 +149,14 @@ extract_and_feature() {
     local full_out="${XTRACTOUT}/is_element_seqs/${n}_chrlen${max_len}_seqs.fasta"
 
     # 4. Extract
-    if [ "$strand" == "plus" ]; then
+    if [ "$strand_label" == "plus" ]; then
         samtools faidx "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
     else
         samtools faidx --reverse-complement "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
     fi
 
     # 5. Output Feature Row
-    echo -e "${blast_fname}\t${header}\t${qid}\t${sseqid}\t${max_len}\t${gstart}\t${gend}\t${gstrand}\t${pident}\t${qcov}\t${rel_start}\t${rel_end}"
+    echo -e "${blast_fname}\t${header}\t${qseqid}\t${sseqid}\t${max_len}\t${sstart}\t${send}\t${sstrand}\t${pident}\t${qcov}\t${rel_start}\t${rel_end}"
 
     # 6. Cleanup
     rm -f "$tmp_fa" "$tmp_fa".fai
@@ -194,7 +196,8 @@ FILTERED_TSV=${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv
 mkdir -p ${XTRACTOUT}/is_element_seqs/
 rm -f ${XTRACTOUT}/is_element_seqs/*
 
-echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/is_element_seqs.features.tsv"
+# "${blast_fname}\t${header}\t${qseqid}\t${sseqid}\t${max_len}\t${gstart}\t${gend}\t${gstrand}\t${pident}\t${qcov}\t${rel_start}\t${rel_end}"
+echo -e "filename\theader\tis_name\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/is_element_seqs.features.tsv"
 # Use Parallel to run the extraction
 total_lines=$(tail -n +2 "$FILTERED_TSV" | wc -l)
 tail -n +2 "$FILTERED_TSV" | \
