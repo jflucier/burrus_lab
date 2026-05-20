@@ -167,19 +167,19 @@ else
   module purge 2>/dev/null
   ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 2>/dev/null
 
-  mkdir -p ${BLASTOUT}/blast.qcov${COVERAGE}
-  find "${BLASTOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
-  total_files=$(find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | wc -l)
-  find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | \
-      pv -l -s "$total_files" | \
-      parallel --jobs ${NCORES} do_parallel_blast {}
+#  mkdir -p ${BLASTOUT}/blast.qcov${COVERAGE}
+#  find "${BLASTOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
+#  total_files=$(find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | wc -l)
+#  find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | \
+#      pv -l -s "$total_files" | \
+#      parallel --jobs ${NCORES} do_parallel_blast {}
 
   #qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle ass, chr, g_start, g_end, strand
   HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs\tstitle\tassembly\tchr\tstart\tend\tstrand"
   echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
   echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.filtered.tsv"
 
-  find "${BLASTOUT}/blast" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
+  find "${BLASTOUT}" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
   tail -n +2 "${BASE_PATH}/blast.qcov${COVERAGE}.tsv" | \
       sort -t$'\t' -k1,1 -k14,14rn -k4,4rn | \
       awk -F'\t' '!seen[$1]++' >> "${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv"
