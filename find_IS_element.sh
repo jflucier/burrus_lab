@@ -176,8 +176,8 @@ else
 
   #qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle ass, chr, g_start, g_end, strand
   HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs\tstitle\tassembly\tchr\tstart\tend\tstrand"
-  echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
-  echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.filtered.tsv"
+  echo -e "$HEADER" > "${BLASTOUT}/blast.qcov${COVERAGE}.tsv"
+  echo -e "$HEADER" > "${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv"
 
   find "${BLASTOUT}/blast.qcov${COVERAGE}" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${BLASTOUT}/blast.qcov${COVERAGE}.tsv"
   tail -n +2 "${BLASTOUT}/blast.qcov${COVERAGE}.tsv" | \
