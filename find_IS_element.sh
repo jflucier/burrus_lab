@@ -116,7 +116,7 @@ extract_and_feature() {
     gunzip -c "$fa_gz" > "$tmp_fa"
     samtools faidx "$tmp_fa"
 
-    local max_len=$(awk -v s="${chr}" '$1==s {print $2}' "${tmp_fa}.fai")
+    local max_len=$(awk -v s="${sseqid}" '$1==s {print $2}' "${tmp_fa}.fai")
     if [[ -z "$max_len" || ! "$max_len" =~ ^[0-9]+$ ]]; then
         rm -f "$tmp_fa"*
         echo "Error: chr length not defined " >&2;
@@ -143,18 +143,18 @@ extract_and_feature() {
         local strand_label="minus"
     fi
 
-    local header="${n}_${chr}_chrlen${max_len}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand_label}_relstart${rel_start}_relend${rel_end}"
+    local header="${n}_${sseqid}_chrlen${max_len}_${gstart}-${gend}_pident${pident}_qcov${qcov}_strand${strand_label}_relstart${rel_start}_relend${rel_end}"
     local full_out="${XTRACTOUT}/is_element_seqs/${n}_chrlen${max_len}_seqs.fasta"
 
     # 4. Extract
     if [ "$strand" == "plus" ]; then
-        samtools faidx "$tmp_fa" "${chr}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
+        samtools faidx "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
     else
-        samtools faidx --reverse-complement "$tmp_fa" "${chr}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
+        samtools faidx --reverse-complement "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
     fi
 
     # 5. Output Feature Row
-    echo -e "${blast_fname}\t${header}\t${qid}\t${assembly}\t${chr}\t${max_len}\t${gstart}\t${gend}\t${gstrand}\t${pident}\t${qcov}\t${rel_start}\t${rel_end}"
+    echo -e "${blast_fname}\t${header}\t${qid}\t${sseqid}\t${max_len}\t${gstart}\t${gend}\t${gstrand}\t${pident}\t${qcov}\t${rel_start}\t${rel_end}"
 
     # 6. Cleanup
     rm -f "$tmp_fa" "$tmp_fa".fai
