@@ -10,7 +10,7 @@ usage() {
     exit 1
 }
 
-while getopts "f:o:" opt; do
+while getopts "f:o:n:" opt; do
   case $opt in
     f) IS_FA="$OPTARG" ;;
     o) ROOT_PATH="$OPTARG" ;;
