@@ -58,7 +58,7 @@ do_parallel_blast() {
     local n=$(basename $b)
     local tmp_fa="${b}_tmp.fa"
     local tmp_db="${b}_db"
-    local out_file="${BLASTOUT}/${n}.is_element_hits.txt"
+    local out_file="${BLASTOUT}/blast.qcov${COVERAGE}/${n}.is_element_hits.txt"
 
     # 1. Prepare
     gunzip -c "$fa" > "$tmp_fa"
@@ -69,28 +69,28 @@ do_parallel_blast() {
       -query "$IS_FA" \
       -db "$tmp_db" \
       -num_threads 1 \
-      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" > "$out_file"
+      -qcov_hsp_perc ${COVERAGE} \
+      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" | \
+    awk -v OFS="\t" '{
+      # 2. Extract stitle (Column 15)
+      full_title = $14;
+      for (i=15; i<=NF; i++) full_title = full_title " " $i;
 
-#    awk -v OFS="\t" '{
-#      # 2. Extract stitle (Column 15)
-#      full_title = $14;
-#      for (i=15; i<=NF; i++) full_title = full_title " " $i;
-#
-#      split(full_title, words, " ");
-#      loc_str = words[2];
-#
-#      # 3. Parse Location (assembly:chr:start:end:strand)
-#      n = split(loc_str, loc, ":");
-#      strand = (loc[n] == "1") ? "+" : "-";
-#      g_end  = loc[n-1];
-#      g_start = loc[n-2];
-#      chr    = loc[n-3];
-#      ass    = loc[n-4];
-#
-#      # 5. Output all columns
-#      # $0 includes original 15 columns, then we append our 8 extracted ones
-#      print $0, ass, chr, g_start, g_end, strand;
-#    }' > "$out_file"
+      split(full_title, words, " ");
+      loc_str = words[2];
+
+      # 3. Parse Location (assembly:chr:start:end:strand)
+      n = split(loc_str, loc, ":");
+      strand = (loc[n] == "1") ? "+" : "-";
+      g_end  = loc[n-1];
+      g_start = loc[n-2];
+      chr    = loc[n-3];
+      ass    = loc[n-4];
+
+      # 5. Output all columns
+      # $0 includes original 15 columns, then we append our 8 extracted ones
+      print $0, ass, chr, g_start, g_end, strand;
+    }' > "$out_file"
 
     # 3. Cleanup
     rm "$tmp_fa" "$tmp_db".n*
@@ -169,8 +169,8 @@ else
 
   mkdir -p ${BLASTOUT}/blast.qcov${COVERAGE}
   find "${BLASTOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
-  total_files=$(find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | wc -l)
-  find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | \
+  total_files=$(find ${GENOMES}/ -path "*/dna/*.pep.all.fa.gz" | wc -l)
+  find ${GENOMES}/ -path "*/pep/*.dna.toplevel.fa.gz" | \
       pv -l -s "$total_files" | \
       parallel --jobs ${NCORES} do_parallel_blast {}
 
@@ -179,8 +179,8 @@ else
   echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
   echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.filtered.tsv"
 
-  find "${BLASTOUT}" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
-  tail -n +2 "${BASE_PATH}/blast.qcov${COVERAGE}.tsv" | \
+  find "${BLASTOUT}/blast.qcov${COVERAGE}" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${BLASTOUT}/blast.qcov${COVERAGE}.tsv"
+  tail -n +2 "${BLASTOUT}/blast.qcov${COVERAGE}.tsv" | \
       sort -t$'\t' -k1,1 -k14,14rn -k4,4rn | \
       awk -F'\t' '!seen[$1]++' >> "${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv"
 fi
