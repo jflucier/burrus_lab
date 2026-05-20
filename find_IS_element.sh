@@ -70,6 +70,7 @@ do_parallel_blast() {
       -db "$tmp_db" \
       -num_threads 1 \
       -qcov_hsp_perc ${COVERAGE} \
+      -perc_identity 95 \
       -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" \
       -out "$out_file" | \
     awk -v OFS="\t" '{
