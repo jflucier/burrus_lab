@@ -125,27 +125,27 @@ extract_and_feature() {
         return 1
     fi
 
-    local exp_start=$gstart
+    local exp_start=$sstart
     [[ "$exp_start" -lt 1 ]] && exp_start=1
 
-    local exp_end=$gend
+    local exp_end=$send
     [[ "$exp_end" -gt "$max_len" ]] && exp_end="$max_len"
 
     local rel_start rel_end
     if [[ "$sstrand" == "+" ]]; then
         # On Plus strand: local start = (genomic start of gene - genomic start of window) + 1
-        rel_start=$(( gstart - exp_start + 1 ))
-        rel_end=$(( gend - exp_start + 1 ))
+        rel_start=$(( sstart - exp_start + 1 ))
+        rel_end=$(( send - exp_start + 1 ))
         local strand_label="plus"
     else
         # On Minus strand (RC): local start = (genomic end of window - genomic end of gene) + 1
         # Because RC flips the sequence, the genomic END of the gene is now closer to the local START.
-        rel_start=$(( exp_end - gend + 1 ))
-        rel_end=$(( exp_end - gstart + 1 ))
+        rel_start=$(( exp_end - send + 1 ))
+        rel_end=$(( exp_end - sstart + 1 ))
         local strand_label="minus"
     fi
 
-    local header="${n}_${sseqid}_chrlen${max_len}_${gstart}-${gend}_pident${pident}_qcov${qcov}_strand${strand_label}_relstart${rel_start}_relend${rel_end}"
+    local header="${n}_${sseqid}_chrlen${max_len}_${sstart}-${send}_pident${pident}_qcov${qcovs}_strand${strand_label}_relstart${rel_start}_relend${rel_end}"
     local full_out="${XTRACTOUT}/is_element_seqs/${n}_chrlen${max_len}_seqs.fasta"
 
     # 4. Extract
@@ -156,7 +156,7 @@ extract_and_feature() {
     fi
 
     # 5. Output Feature Row
-    echo -e "${blast_fname}\t${header}\t${qseqid}\t${sseqid}\t${max_len}\t${sstart}\t${send}\t${sstrand}\t${pident}\t${qcov}\t${rel_start}\t${rel_end}"
+    echo -e "${blast_fname}\t${header}\t${qseqid}\t${sseqid}\t${max_len}\t${sstart}\t${send}\t${sstrand}\t${pident}\t${qcovs}\t${rel_start}\t${rel_end}"
 
     # 6. Cleanup
     rm -f "$tmp_fa" "$tmp_fa".fai
