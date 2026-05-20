@@ -118,7 +118,7 @@ extract_and_feature() {
     local exp_end=$genomic_max
 
     local rel_start rel_end strand_label
-    if [[ "$sstrand" == "+" ]]; then
+    if [[ "$sstrand" == "plus" ]]; then
         # On Plus strand: local start = (genomic start of gene - genomic start of window) + 1
         rel_start=$(( sstart - exp_start + 1 ))
         rel_end=$(( send - exp_start + 1 ))
@@ -183,7 +183,7 @@ mkdir -p ${XTRACTOUT}/is_element_seqs/
 rm -f ${XTRACTOUT}/is_element_seqs/*
 
 # "${blast_fname}\t${header}\t${qseqid}\t${sseqid}\t${max_len}\t${gstart}\t${gend}\t${gstrand}\t${pident}\t${qcov}\t${rel_start}\t${rel_end}"
-echo -e "filename\theader\tis_name\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/is_element_seqs.features.tsv"
+echo -e "filename\theader\tis_name\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\trel_start\trel_end" > "${XTRACTOUT}/is_element_seqs.features.tsv"
 # Use Parallel to run the extraction
 total_lines=$(tail -n +2 "$FILTERED_TSV" | wc -l)
 tail -n +2 "$FILTERED_TSV" | \
