@@ -73,27 +73,6 @@ do_parallel_blast() {
       -perc_identity 95 \
       -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send sstrand evalue bitscore qcovs stitle" \
       -out "$out_file"
-#      | \
-#    awk -v OFS="\t" '{
-#      # 2. Extract stitle (Column 15)
-#      full_title = $15;
-#      for (i=16; i<=NF; i++) full_title = full_title " " $i;
-#
-#      split(full_title, words, " ");
-#      loc_str = words[2];
-#
-#      # 3. Parse Location (assembly:chr:start:end:strand)
-#      n = split(loc_str, loc, ":");
-#      strand = (loc[n] == "1") ? "+" : "-";
-#      g_end  = loc[n-1];
-#      g_start = loc[n-2];
-#      chr    = loc[n-3];
-#      ass    = loc[n-4];
-#
-#      # 5. Output all columns
-#      # $0 includes original 15 columns, then we append our 8 extracted ones
-#      print $0, ass, chr, g_start, g_end, strand;
-#    }' > "$out_file"
 
     # 3. Cleanup
     rm "$tmp_fa" "$tmp_db".n*
@@ -126,13 +105,19 @@ extract_and_feature() {
         return 1
     fi
 
-    local exp_start=$sstart
-    [[ "$exp_start" -lt 1 ]] && exp_start=1
+    local genomic_min genomic_max
+    if [ "$sstart" -le "$send" ]; then
+        genomic_min=$sstart
+        genomic_max=$send
+    else
+        genomic_min=$send
+        genomic_max=$sstart
+    fi
 
-    local exp_end=$send
-    [[ "$exp_end" -gt "$max_len" ]] && exp_end="$max_len"
+    local exp_start=$genomic_min
+    local exp_end=$genomic_max
 
-    local rel_start rel_end
+    local rel_start rel_end strand_label
     if [[ "$sstrand" == "+" ]]; then
         # On Plus strand: local start = (genomic start of gene - genomic start of window) + 1
         rel_start=$(( sstart - exp_start + 1 ))
@@ -141,8 +126,8 @@ extract_and_feature() {
     else
         # On Minus strand (RC): local start = (genomic end of window - genomic end of gene) + 1
         # Because RC flips the sequence, the genomic END of the gene is now closer to the local START.
-        rel_start=$(( exp_end - send + 1 ))
-        rel_end=$(( exp_end - sstart + 1 ))
+        rel_start=$(( exp_end - sstart + 1 ))
+        rel_end=$(( exp_end - send + 1 ))
         local strand_label="minus"
     fi
 
@@ -153,7 +138,7 @@ extract_and_feature() {
     if [ "$strand_label" == "plus" ]; then
         samtools faidx "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
     else
-        samtools faidx --reverse-complement "$tmp_fa" "${sseqid}:${exp_end}-${exp_start}" | sed "1s/.*/\>${header}/" >> "$full_out"
+        samtools faidx --reverse-complement "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
     fi
 
     # 5. Output Feature Row
