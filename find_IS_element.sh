@@ -175,13 +175,14 @@ else
       pv -l -s "$total_files" | \
       parallel --jobs ${NCORES} do_parallel_blast {}
 
-  HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tslen\tgaps\tstitle\tsubject_cov\tassembly\tchr\tstart\tend\tstrand\tgene_name\tgene_desc"
-  echo -e "$HEADER" > "${BLASTOUT}/blast.qcov${COVERAGE}.tsv"
-  echo -e "$HEADER" > "${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv"
+  #qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle ass, chr, g_start, g_end, strand
+  HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs\tstitle\tassembly\tchr\tstart\tend\tstrand"
+  echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
+  echo -e "$HEADER" > "${BASE_PATH}/blast.qcov${COVERAGE}.filtered.tsv"
 
-  find "${BLASTOUT}/blast.qcov${COVERAGE}" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${BLASTOUT}/blast.qcov${COVERAGE}.tsv"
-  tail -n +2 "${BLASTOUT}/blast.qcov${COVERAGE}.tsv" | \
-      sort -t$'\t' -k1,1 -k17,17rn -k4,4rn | \
+  find "${BLASTOUT}/blast" -name "*.txt" -not -empty -exec awk -v OFS="\t" '{ print FILENAME, $0 }' {} + >> "${BASE_PATH}/blast.qcov${COVERAGE}.tsv"
+  tail -n +2 "${BASE_PATH}/blast.qcov${COVERAGE}.tsv" | \
+      sort -t$'\t' -k1,1 -k14,14rn -k4,4rn | \
       awk -F'\t' '!seen[$1]++' >> "${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv"
 fi
 
