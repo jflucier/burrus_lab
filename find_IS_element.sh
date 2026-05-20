@@ -106,6 +106,7 @@ extract_and_feature() {
 
     # Use read to split the tab-separated line into variables
     # This must match your 24-column TSV structure exactly
+    #qseqid sseqid pident length mismatch gapopen qstart qend sstart send sstrand evalue bitscore qcovs stitle
     IFS=$'\t' read -r blast_fname qseqid sseqid pident length mismatch gapopen qstart qend sstart send sstrand evalue bitscore qcovs stitle <<< "$line"
     local n=$(basename "$blast_fname" .dna.toplevel.is_element_hits.txt)
 
@@ -152,7 +153,7 @@ extract_and_feature() {
     if [ "$strand_label" == "plus" ]; then
         samtools faidx "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
     else
-        samtools faidx --reverse-complement "$tmp_fa" "${sseqid}:${exp_start}-${exp_end}" | sed "1s/.*/\>${header}/" >> "$full_out"
+        samtools faidx --reverse-complement "$tmp_fa" "${sseqid}:${exp_end}-${exp_start}" | sed "1s/.*/\>${header}/" >> "$full_out"
     fi
 
     # 5. Output Feature Row
