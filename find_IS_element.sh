@@ -170,7 +170,7 @@ else
   mkdir -p ${BLASTOUT}/blast.qcov${COVERAGE}
   find "${BLASTOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
   total_files=$(find ${GENOMES}/ -path "*/dna/*.pep.all.fa.gz" | wc -l)
-  find ${GENOMES}/ -path "*/pep/*.dna.toplevel.fa.gz" | \
+  find ${GENOMES}/ -path "*/dna/*.dna.toplevel.fa.gz" | \
       pv -l -s "$total_files" | \
       parallel --jobs ${NCORES} do_parallel_blast {}
 
