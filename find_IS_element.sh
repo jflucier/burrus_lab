@@ -69,8 +69,7 @@ do_parallel_blast() {
       -query "$IS_FA" \
       -db "$tmp_db" \
       -num_threads 1 \
-      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" \
-      -out "$out_file" | \
+      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" | \
     awk -v OFS="\t" '{
       # 2. Extract stitle (Column 15)
       full_title = $14;
@@ -167,12 +166,12 @@ else
   module purge 2>/dev/null
   ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 2>/dev/null
 
-#  mkdir -p ${BLASTOUT}/blast.qcov${COVERAGE}
-#  find "${BLASTOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
-#  total_files=$(find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | wc -l)
-#  find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | \
-#      pv -l -s "$total_files" | \
-#      parallel --jobs ${NCORES} do_parallel_blast {}
+  mkdir -p ${BLASTOUT}/blast.qcov${COVERAGE}
+  find "${BLASTOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
+  total_files=$(find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | wc -l)
+  find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | \
+      pv -l -s "$total_files" | \
+      parallel --jobs ${NCORES} do_parallel_blast {}
 
   #qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle ass, chr, g_start, g_end, strand
   HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs\tstitle\tassembly\tchr\tstart\tend\tstrand"
