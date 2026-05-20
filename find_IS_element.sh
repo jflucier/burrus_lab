@@ -70,27 +70,28 @@ do_parallel_blast() {
       -db "$tmp_db" \
       -num_threads 1 \
       -qcov_hsp_perc ${COVERAGE} \
-      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" | \
-    awk -v OFS="\t" '{
-      # 2. Extract stitle (Column 15)
-      full_title = $14;
-      for (i=15; i<=NF; i++) full_title = full_title " " $i;
+      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" > "$out_file"
 
-      split(full_title, words, " ");
-      loc_str = words[2];
-
-      # 3. Parse Location (assembly:chr:start:end:strand)
-      n = split(loc_str, loc, ":");
-      strand = (loc[n] == "1") ? "+" : "-";
-      g_end  = loc[n-1];
-      g_start = loc[n-2];
-      chr    = loc[n-3];
-      ass    = loc[n-4];
-
-      # 5. Output all columns
-      # $0 includes original 15 columns, then we append our 8 extracted ones
-      print $0, ass, chr, g_start, g_end, strand;
-    }' > "$out_file"
+#    awk -v OFS="\t" '{
+#      # 2. Extract stitle (Column 15)
+#      full_title = $14;
+#      for (i=15; i<=NF; i++) full_title = full_title " " $i;
+#
+#      split(full_title, words, " ");
+#      loc_str = words[2];
+#
+#      # 3. Parse Location (assembly:chr:start:end:strand)
+#      n = split(loc_str, loc, ":");
+#      strand = (loc[n] == "1") ? "+" : "-";
+#      g_end  = loc[n-1];
+#      g_start = loc[n-2];
+#      chr    = loc[n-3];
+#      ass    = loc[n-4];
+#
+#      # 5. Output all columns
+#      # $0 includes original 15 columns, then we append our 8 extracted ones
+#      print $0, ass, chr, g_start, g_end, strand;
+#    }' > "$out_file"
 
     # 3. Cleanup
     rm "$tmp_fa" "$tmp_db".n*
