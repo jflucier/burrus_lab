@@ -69,7 +69,6 @@ do_parallel_blast() {
       -query "$IS_FA" \
       -db "$tmp_db" \
       -num_threads 1 \
-      -qcov_hsp_perc ${COVERAGE} \
       -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle" > "$out_file"
 
 #    awk -v OFS="\t" '{
