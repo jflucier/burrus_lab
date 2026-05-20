@@ -191,8 +191,10 @@ pv -l -s "$total_lines" | \
 parallel --jobs "$NCORES" extract_and_feature {} >> "${XTRACTOUT}/is_element_seqs.features.tsv"
 
 # gen sequence tsv for db import
-echo -e "tnpa_seqsig\tseq" > ${XTRACTOUT}/is_element_seqs.fastas.tsv
-awk '/^>/ { if (header) print header "\t" seq; header = substr($0,2); seq = ""; next } { seq = seq $0 } END { if (header) print header "\t" seq }' ${XTRACTOUT}/is_element_seqs/*_seqs.fasta >> ${XTRACTOUT}/is_element_seqs.fastas.tsv
+find "${XTRACTOUT}/is_element_seqs/" -type f -name "*_seqs.fasta" -exec cat {} + > "${XTRACTOUT}/is_element_seqs.fasta"
+
+echo -e "tnpa_seqsig\tseq" > "${XTRACTOUT}/is_element_seqs.fastas.tsv"
+awk '/^>/ { if (header) print header "\t" seq; header = substr($0,2); seq = ""; next } { seq = seq $0 } END { if (header) print header "\t" seq }' "${XTRACTOUT}/is_element_seqs.fasta" >> "${XTRACTOUT}/is_element_seqs.fastas.tsv"
 
 echo "##### done #####"
 
