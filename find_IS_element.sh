@@ -42,9 +42,9 @@ export BASE_PATH="${ROOT_PATH}/is_element_${n}_qcov${COVERAGE}"
 # --- Export everything else ---
 export NCORES COVERAGE GENOMES IS_FA
 export BLASTOUT="${BASE_PATH}/blast"
-export EXTRACTOUT="${BASE_PATH}/extract"
+export XTRACTOUT="${BASE_PATH}/extract"
 
-mkdir -p "$BLASTOUT" "$EXTRACTOUT"
+mkdir -p "$BLASTOUT" "$XTRACTOUT"
 
 echo "Running with $NCORES cores at $COVERAGE% coverage."
 echo "FASTA: $IS_FA"
@@ -145,7 +145,7 @@ extract_and_feature() {
     fi
 
     local header="${n}_${chr}_chrlen${max_len}_${gstart}-${gend}_flank${FLANKING_SEQ_LEN}k_pident${pident}_qcov${qcov}_strand${strand_label}_relstart${rel_start}_relend${rel_end}"
-    local full_out="${EXTRACTOUT}/is_element_seqs/${n}_chrlen${max_len}_seqs.fasta"
+    local full_out="${XTRACTOUT}/is_element_seqs/${n}_chrlen${max_len}_seqs.fasta"
 
     # 4. Extract
     if [ "$strand" == "plus" ]; then
@@ -191,7 +191,7 @@ echo "##### extracting isoform sequences from blast hits #####"
 module purge 2>/dev/null
 ml StdEnv/2020 samtools/1.17 2>/dev/null
 FILTERED_TSV=${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv
-mkdir -p ${EXTRACTOUT}/is_element_seqs/
+mkdir -p ${XTRACTOUT}/is_element_seqs/
 rm -f ${XTRACTOUT}/is_element_seqs/*
 
 echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/is_element_seqs.features.tsv"
