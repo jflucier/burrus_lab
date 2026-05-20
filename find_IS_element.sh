@@ -105,10 +105,10 @@ extract_and_feature() {
     # Use read to split the tab-separated line into variables
     # This must match your 24-column TSV structure exactly
     IFS=$'\t' read -r blast_fname qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle ass chr gstart gend gstrand <<< "$line"
-    local n=$(basename "$blast_fname" .is_element_hits.txt)
+    local n=$(basename "$blast_fname" .dna.toplevel.is_element_hits.txt)
 
     # 1. Find Genome (Lowercase logic included for safety)
-    local fa_gz=$(find "${GENOMES}" -path "*/dna/${n}*.dna.toplevel.fa.gz" | head -n 1)
+    local fa_gz=$(find "${GENOMES}" -path "*/*/dna/${n}*.dna.toplevel.fa.gz" | head -n 1)
     [[ -z "$fa_gz" ]] && { echo "Error: Genome $n not found" >&2; return 1; }
 
     # 2. Prepare Temp (Use BASHPID for thread safety)
