@@ -68,7 +68,7 @@ do_parallel_blast() {
 
     # 2. BLAST (using 1 thread per blast call, parallel handles the rest)
     blastn \
-      -query "$IS_FA" \
+      -query "${BLASTOUT}/in.fa" \
       -db "$tmp_db" \
       -num_threads 1 \
       -qcov_hsp_perc ${COVERAGE} \
@@ -155,6 +155,10 @@ if [[ ${SKIP_BLAST_STEP} != "false" ]]; then
   echo "##### Skipping tnpA blast step #####"
 else
   echo "##### finding isoform using BLAST #####"
+  module purge
+  ml StdEnv/2020 emboss/6.6.0
+  seqret ${IS_FA} ${BLASTOUT}/in.fa
+
   module purge 2>/dev/null
   ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 2>/dev/null
 
