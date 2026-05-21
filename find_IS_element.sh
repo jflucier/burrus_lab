@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # --- Set Defaults ---
-NCORES=32
-COVERAGE=95
-PIDENT=95
-GENOMES="/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
-SKIP_BLAST_STEP="false"
+export NCORES=32
+export COVERAGE=95
+export PIDENT=95
+export GENOMES="/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
+export SKIP_BLAST_STEP="false"
 
 # --- Initialize Mandatory Variables as Empty ---
 IS_FA=""
