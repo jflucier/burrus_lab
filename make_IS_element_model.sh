@@ -25,6 +25,11 @@ if [[ -z "$IS_FA" || -z "$ROOT_PATH" || -z "$MODEL" ]]; then
     usage
 fi
 
+if [[ ! -s "$IS_FA" ]]; then
+    echo "Error: File '$IS_FA' is empty (0 bytes) or does not exist."
+    exit 1
+fi
+
 # --- Logic for dynamic naming ---
 export BASE_PATH="${ROOT_PATH}/models"
 

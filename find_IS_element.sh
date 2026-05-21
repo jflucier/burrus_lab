@@ -169,8 +169,8 @@ else
       pv -l -s "$total_files" | \
       parallel --jobs ${NCORES} do_parallel_blast {}
 
-  #qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs stitle ass, chr, g_start, g_end, strand
-  HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs\tstitle\tassembly\tchr\tstart\tend\tstrand"
+  #qseqid sseqid pident length mismatch gapopen qstart qend sstart send sstrand evalue bitscore qcovs stitle
+  HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tsstrand\tevalue\tbitscore\tqcovs\tstitle"
   echo -e "$HEADER" > "${BLASTOUT}/blast.qcov${COVERAGE}.tsv"
   echo -e "$HEADER" > "${BLASTOUT}/blast.qcov${COVERAGE}.filtered.tsv"
 
