@@ -39,7 +39,7 @@ fi
 # --- Logic for dynamic naming ---
 b=$(basename "${IS_FA}")
 n=${b%.fa}
-export BASE_PATH="${ROOT_PATH}/is_element_${n}_qcov${COVERAGE}"
+export BASE_PATH="${ROOT_PATH}/is_element_${n}_qcov${COVERAGE}_pident${PIDENT}"
 
 # --- Export everything else ---
 export NCORES COVERAGE GENOMES IS_FA
