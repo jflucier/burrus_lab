@@ -2,7 +2,8 @@
 
 # --- Set Defaults ---
 NCORES=32
-COVERAGE=75
+COVERAGE=95
+PIDENT=95
 GENOMES="/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
 SKIP_BLAST_STEP="false"
 
@@ -12,16 +13,17 @@ ROOT_PATH=""
 
 # --- Parse Arguments ---
 usage() {
-    echo "Usage: $0 -f <is_fasta> -r <root_path> [-n ncores] [-c coverage] [-g genomes_path] [-s skip_blast_step]"
+    echo "Usage: $0 -f <is_fasta> -r <root_path> [-n ncores] [-c coverage] [-p pident] [-g genomes_path] [-s skip_blast_step]"
     exit 1
 }
 
-while getopts "f:r:n:c:g:t:o:l:s:" opt; do
+while getopts "f:r:n:c:g:t:o:l:s:p:" opt; do
   case $opt in
     f) IS_FA="$OPTARG" ;;
     r) ROOT_PATH="$OPTARG" ;;
     n) NCORES="$OPTARG" ;;
     c) COVERAGE="$OPTARG" ;;
+    p) PIDENT="$OPTARG" ;;
     g) GENOMES="$OPTARG" ;;
     s) SKIP_BLAST_STEP="$OPTARG" ;;
     *) usage ;;
@@ -46,7 +48,7 @@ export XTRACTOUT="${BASE_PATH}/extract"
 
 mkdir -p "$BLASTOUT" "$XTRACTOUT"
 
-echo "Running with $NCORES cores at $COVERAGE% coverage."
+echo "Running with $NCORES cores at $COVERAGE% coverage and pident $PIDENT%."
 echo "FASTA: $IS_FA"
 echo "Base Path: $BASE_PATH"
 
@@ -70,7 +72,7 @@ do_parallel_blast() {
       -db "$tmp_db" \
       -num_threads 1 \
       -qcov_hsp_perc ${COVERAGE} \
-      -perc_identity 95 \
+      -perc_identity ${PIDENT} \
       -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send sstrand evalue bitscore qcovs stitle" \
       -out "$out_file"
 
