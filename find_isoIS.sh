@@ -629,12 +629,11 @@ FROM tnpA_features f
       AND o.strand = '+'
       AND CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
   LEFT JOIN orf121 orf on orf.target_name=f.tnpa_seqsig
+      AND CAST(orf.end AS INT) <= CAST(f.rel_start AS INT) + 60
   JOIN orf121_best b on b.orf121_name=orf.orf121_name
   JOIN tnpA_seqs s on s.tnpa_seqsig=f.tnpa_seqsig
 WHERE
   CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
-  --AND CAST(orf.end AS INT) <= CAST(f.rel_start AS INT) + 10
-  --AND (t.target_from_coord IS NULL OR (CAST(f.rel_start AS INT) >= CAST(t.target_from_coord AS INT) - 10 AND CAST(orf.end AS INT) > CAST(t.target_from_coord AS INT)))
 " > ${BASE_PATH}/signatures_report_qcov${COVERAGE}_${FLANKING_SEQ_LEN}.tsv
 
 echo "##### zipping results in ${ROOT_PATH}/${n}_qcov${COVERAGE}.zip #####"
