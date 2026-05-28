@@ -620,7 +620,10 @@ SELECT
       (f.end - f.start + 1)
   ) AS tnpA_nt_seq,
   substr(s.seq, o.target_from_coord, (o.target_to_coord - o.target_from_coord + 1)) as oriIS_seq,
-  substr(s.seq, t.target_from_coord, (o.target_to_coord - t.target_from_coord + 1)) AS full_seq
+  substr(s.seq,
+    CASE WHEN (t.target_from_coord - 50) < 1 THEN 1 ELSE (t.target_from_coord - 50),
+    (o.target_to_coord - t.target_from_coord + 1) + 50
+  ) AS full_seq
 FROM tnpA_features f
   JOIN terIS t ON t.target_name = f.tnpa_seqsig
       AND t.strand = '+'
