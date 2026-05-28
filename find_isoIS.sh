@@ -5,6 +5,7 @@ NCORES=32
 COVERAGE=75
 GENOMES="/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
 SKIP_BLAST_STEP="false"
+FIND_ORF121="true"
 
 # --- Initialize Mandatory Variables as Empty ---
 TNPA_FA=""
@@ -16,7 +17,7 @@ usage() {
     exit 1
 }
 
-while getopts "f:r:n:c:g:t:o:l:s:" opt; do
+while getopts "f:r:n:c:g:t:o:l:s:z:" opt; do
   case $opt in
     f) TNPA_FA="$OPTARG" ;;
     r) ROOT_PATH="$OPTARG" ;;
@@ -27,6 +28,7 @@ while getopts "f:r:n:c:g:t:o:l:s:" opt; do
     o) ORIIS_MODEL="$OPTARG" ;;
     l) FLANKING_SEQ_LEN="$OPTARG" ;;
     s) SKIP_BLAST_STEP="$OPTARG" ;;
+    z) FIND_ORF121="$OPTARG" ;;
     *) usage ;;
   esac
 done
@@ -45,7 +47,14 @@ export BASE_PATH="${ROOT_PATH}/${n}_qcov${COVERAGE}"
 # --- Set Model Defaults (if not provided via flags) ---
 export TERIS_MODEL=${TERIS_MODEL:-"/fast/def-burrusvi/20260512_isoIS_others/models/isoforms_IS91_IS801_1294b_terIS_nt.cm"}
 export ORIIS_MODEL=${ORIIS_MODEL:-"/fast/def-burrusvi/20260512_isoIS_others/models/isoforms_IS91_IS801_1294b_oriIS_nt.cm"}
+
+# RUN ONCE: make blast db of orf121 for best hit filtering
+#echo "##### finding orf121 using BLAST #####"
+#module purge 2>/dev/null
+#ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 2>/dev/null
+#makeblastdb -in "IS_fasta/isoforms_IS91_orf121_aa.fa" -dbtype prot -logfile /dev/null
 export ORF121_BLASTDB=${ORF121_BLASTDB:-"/fast/def-burrusvi/20260323_isoIS91/IS_fasta/isoforms_IS91_orf121_aa.fa"}
+
 export FLANKING_SEQ_LEN=${FLANKING_SEQ_LEN:-"2000"}
 
 
@@ -63,35 +72,6 @@ echo "Running with $NCORES cores at $COVERAGE% coverage."
 echo "FASTA: $TNPA_FA"
 echo "Base Path: $BASE_PATH"
 echo "Flanking tnpA seq length: $FLANKING_SEQ_LEN"
-
-# Define the processing function
-#do_parallel_blast() {
-#    local fa=$1
-#
-#    local b=${fa%.fa.gz}
-#    local n=$(basename $b)
-#    local tmp_fa="${b}_tmp.fa"
-#    local tmp_db="${b}_db"
-#    local out_file="${TNPAOUT}/blast.qcov${COVERAGE}/${n}_tnpa_hits.txt"
-#
-#    # 1. Prepare
-#    gunzip -c "$fa" > "$tmp_fa"
-#    makeblastdb -in "$tmp_fa" -dbtype nucl -out "$tmp_db" -logfile /dev/null
-#
-#    # 2. BLAST (using 1 thread per blast call, parallel handles the rest)
-#    tblastn \
-#      -query "$TNPA_FA" \
-#      -db "$tmp_db" \
-#      -num_threads 1 \
-#      -db_gencode 11 \
-#      -qcov_hsp_perc ${COVERAGE} \
-#      -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs" \
-#      -out "$out_file"
-#
-#    # 3. Cleanup
-#    rm "$tmp_fa" "$tmp_db".n*
-#}
-#export -f do_parallel_blast
 
 do_parallel_blast_pep() {
     local fa=$1
@@ -403,24 +383,6 @@ do_translation() {
 }
 export -f do_translation
 
-##### Step 1: find tnpA with blast #####
-
-### old method blasting prot against genome. Changed to remove truncated hits
-#mkdir -p ${TNPAOUT}/blast.qcov${COVERAGE}
-#total_files=$(find ${GENOMES}/ -path "*/dna/*.dna.toplevel.fa.gz" | wc -l)
-#find ${GENOMES}/ -path "*/dna/*.dna.toplevel.fa.gz" | \
-#pv -l -s "$total_files" | \
-#parallel --jobs ${NCORES} do_parallel_blast {}
-#
-#echo -e "filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs" >${TNPAOUT}/blast.qcov${COVERAGE}.tsv
-#find ${TNPAOUT}/blast.qcov${COVERAGE} -name "*.txt" -not -empty -exec awk '{OFS="\t"; print FILENAME, $0}' {} + >> ${TNPAOUT}/blast.qcov${COVERAGE}.tsv
-#
-## filter duplicate hits
-#echo -e "filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tqcovs" >${TNPAOUT}/blast.qcov${COVERAGE}.filtered.tsv
-#tail -n +2 ${TNPAOUT}/blast.qcov${COVERAGE}.tsv | \
-#sort -t$'\t' -k1,1 -k4,4rn -k14,14rn | \
-#awk -F'\t' '!seen[$1]++' >> ${TNPAOUT}/blast.qcov${COVERAGE}.filtered.tsv
-
 if [[ ${SKIP_BLAST_STEP} != "false" ]]; then
   echo "##### Skipping tnpA blast step #####"
 else
@@ -495,37 +457,35 @@ echo -e "target_name\taccession\tquery_name\tquery_accession\tmodel_type\tmodel_
 cat ${ORIISOUT}/cmsearch/*.tsv >> ${ORIISOUT}/all.oriis.tsv
 
 ##### Step 5: find orf121 #####
-echo "##### finding orf121 #####"
-module purge 2>/dev/null
-ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 emboss/6.6.0 2>/dev/null
+if [[ ${FIND_ORF121} != "true" ]]; then
+  echo "##### Skipping orf121 finding step #####"
+else
+  echo "##### finding orf121 #####"
+  module purge 2>/dev/null
+  ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 emboss/6.6.0 2>/dev/null
 
-# RUN ONCE: make blast db of orf121 for best hit filtering
-#echo "##### finding orf121 using BLAST #####"
-#module purge 2>/dev/null
-#ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 2>/dev/null
-#makeblastdb -in "IS_fasta/isoforms_IS91_orf121_aa.fa" -dbtype prot -logfile /dev/null
+  mkdir -p ${ORF121OUT}/translations ${ORF121OUT}/translations_best
+  rm -f ${ORF121OUT}/translations/* ${ORF121OUT}/translations_best/*
 
-mkdir -p ${ORF121OUT}/translations ${ORF121OUT}/translations_best
-rm -f ${ORF121OUT}/translations/* ${ORF121OUT}/translations_best/*
+  total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
+  find ${XTRACTOUT}/out/ -name "*.fasta" | \
+  pv -l -s "$total_files" | \
+  parallel --jobs ${NCORES} --progress do_translation {}
 
-total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
-find ${XTRACTOUT}/out/ -name "*.fasta" | \
-pv -l -s "$total_files" | \
-parallel --jobs ${NCORES} --progress do_translation {}
+  echo -e "orf121_name\ttarget_name\tstart\tend\tlength\tsequence" > ${ORF121OUT}/all.orf121.tsv
+  cat ${ORF121OUT}/translations/*.tsv >> ${ORF121OUT}/all.orf121.tsv
 
-echo -e "orf121_name\ttarget_name\tstart\tend\tlength\tsequence" > ${ORF121OUT}/all.orf121.tsv
-cat ${ORF121OUT}/translations/*.tsv >> ${ORF121OUT}/all.orf121.tsv
+  echo -e "orf121_name\ttarget_name\torf121_hit\tpident\ttarget_length\tmismatch\tgapopen\ttarget_start\ttarget_end\torf121_hit_start\torf121_hit_end\tevalue\tbitscore\torf121_hit_length\ttarget_align\torf121_hit_align\tscov" > ${ORF121OUT}/best_hits.orf121.tsv
+  cat ${ORF121OUT}/translations_best/*.tsv >> ${ORF121OUT}/best_hits.orf121.tsv
 
-echo -e "orf121_name\ttarget_name\torf121_hit\tpident\ttarget_length\tmismatch\tgapopen\ttarget_start\ttarget_end\torf121_hit_start\torf121_hit_end\tevalue\tbitscore\torf121_hit_length\ttarget_align\torf121_hit_align\tscov" > ${ORF121OUT}/best_hits.orf121.tsv
-cat ${ORF121OUT}/translations_best/*.tsv >> ${ORF121OUT}/best_hits.orf121.tsv
+  head -n 1 ${ORF121OUT}/best_hits.orf121.tsv > ${ORF121OUT}/best_hits.orf121.filtered.tsv
 
-head -n 1 ${ORF121OUT}/best_hits.orf121.tsv > ${ORF121OUT}/best_hits.orf121.filtered.tsv
-
-# 2. Sort by target_name (Col 2) then scov (Col 17) numerically descending
-# 3. Use awk to keep only the first occurrence (the highest coverage) for each target
-tail -n +2 ${ORF121OUT}/best_hits.orf121.tsv | \
-sort -t$'\t' -k1,1 -k17,17nr | \
-awk -F'\t' '!seen[$1]++' >> ${ORF121OUT}/best_hits.orf121.filtered.tsv
+  # 2. Sort by target_name (Col 2) then scov (Col 17) numerically descending
+  # 3. Use awk to keep only the first occurrence (the highest coverage) for each target
+  tail -n +2 ${ORF121OUT}/best_hits.orf121.tsv | \
+  sort -t$'\t' -k1,1 -k17,17nr | \
+  awk -F'\t' '!seen[$1]++' >> ${ORF121OUT}/best_hits.orf121.filtered.tsv
+fi
 
 ##### Step 6: generate signature report #####
 # import blast results
@@ -561,83 +521,123 @@ sqlite3 ${sqlitedb} <<EOF
 .quit
 EOF
 
-sqlite3 ${sqlitedb} <<EOF
-.mode tabs
-.import "${ORF121OUT}/all.orf121.tsv" orf121
-.quit
-EOF
-
-sqlite3 ${sqlitedb} <<EOF
-.mode tabs
-.import "${ORF121OUT}/best_hits.orf121.filtered.tsv" orf121_best
-.quit
-EOF
-
-sqlite3 ${sqlitedb} '.headers on' '.separator "\t"' "
-SELECT
-  f.tnpa_seqsig,
-  f.tnpA_hit,
-  f.assembly tnpA_hit_assembly,
-  f.chr tnpA_hit_chr,
-  f.start tnpA_hit_start,
-  f.end tnpA_hit_end,
-  f.strand tnpA_hit_strand,
-  f.ident tnpA_hit_identity,
-  f.coverage tnpA_hit_coverage,
-  f.gene_name tnpA_hit_genename,
-  f.gene_desc tnpA_hit_genedesc,
-  t.target_from_coord terIS_start,
-  t.target_to_coord terIS_end,
-  t.evalue terIS_evalue,
-  orf.start orf121_pred_start,
-  orf.end orf121_pred_end,
-  orf.length orf121_pred_length,
-  f.rel_start tnpA_rel_start,
-  f.rel_end tnpA_rel_end,
-  o.target_from_coord oriIS_start,
-  o.target_to_coord oriIS_end,
-  o.evalue oriIS_evalue,
-  orf.sequence orf121_pred_sequence,
-  b.pident orf121_hit_pident,
-  b.mismatch orf121_hit_mismatch,
-  b.gapopen orf121_hit_gapopen,
-  b.evalue orf121_hit_evalue,
-  b.bitscore orf121_hit_bitscore,
-  b.scov orf121_hit_coverage,
-  substr(s.seq, t.target_from_coord, (t.target_to_coord - t.target_from_coord + 1)) as terIS_seq,
-  substr(
-      s.seq,
-      orf.start,
-      (length(orf.sequence) + 1) * 3
-  ) AS orf121_nt_seq,
-  substr(s.seq,
-      CASE
-          WHEN f.strand = '+' THEN
-              (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
-          WHEN f.strand = '-' THEN
-              (CASE WHEN (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN}) > CAST(f.chr_len AS INT) THEN (CAST(f.chr_len AS INT) - CAST(f.end AS INT) + 1) ELSE (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN} - CAST(f.end AS INT) + 1) END)
-      END,
-      (f.end - f.start + 1)
-  ) AS tnpA_nt_seq,
-  substr(s.seq, o.target_from_coord, (o.target_to_coord - o.target_from_coord + 1)) as oriIS_seq,
-  substr(s.seq,
-    CASE WHEN (t.target_from_coord - 50) < 1 THEN 1 ELSE (t.target_from_coord - 50),
-    (o.target_to_coord - t.target_from_coord + 1) + 50
-  ) AS full_seq
-FROM tnpA_features f
-  JOIN terIS t ON t.target_name = f.tnpa_seqsig
-      AND t.strand = '+'
-      AND CAST(t.target_from_coord AS INT) <= CAST(f.rel_start AS INT) + 10
-  JOIN oriIS o ON o.target_name = f.tnpa_seqsig
-      AND o.strand = '+'
-      AND CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
-  LEFT JOIN orf121 orf on orf.target_name=f.tnpa_seqsig
-      AND CAST(orf.end AS INT) <= CAST(f.rel_start AS INT) + 60
-  JOIN orf121_best b on b.orf121_name=orf.orf121_name
-  JOIN tnpA_seqs s on s.tnpa_seqsig=f.tnpa_seqsig
-WHERE
-  CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
-" > ${BASE_PATH}/signatures_report_qcov${COVERAGE}_${FLANKING_SEQ_LEN}.tsv
+if [[ ${FIND_ORF121} != "true" ]]; then
+    sqlite3 ${sqlitedb} '.headers on' '.separator "\t"' "
+  SELECT
+    f.tnpa_seqsig,
+    f.tnpA_hit,
+    f.assembly tnpA_hit_assembly,
+    f.chr tnpA_hit_chr,
+    f.start tnpA_hit_start,
+    f.end tnpA_hit_end,
+    f.strand tnpA_hit_strand,
+    f.ident tnpA_hit_identity,
+    f.coverage tnpA_hit_coverage,
+    f.gene_name tnpA_hit_genename,
+    f.gene_desc tnpA_hit_genedesc,
+    t.target_from_coord terIS_start,
+    t.target_to_coord terIS_end,
+    t.evalue terIS_evalue,
+    f.rel_start tnpA_rel_start,
+    f.rel_end tnpA_rel_end,
+    o.target_from_coord oriIS_start,
+    o.target_to_coord oriIS_end,
+    o.evalue oriIS_evalue,
+    substr(s.seq, t.target_from_coord, (t.target_to_coord - t.target_from_coord + 1)) as terIS_seq,
+    substr(s.seq,
+        CASE
+            WHEN f.strand = '+' THEN
+                (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
+            WHEN f.strand = '-' THEN
+                (CASE WHEN (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN}) > CAST(f.chr_len AS INT) THEN (CAST(f.chr_len AS INT) - CAST(f.end AS INT) + 1) ELSE (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN} - CAST(f.end AS INT) + 1) END)
+        END,
+        (f.end - f.start + 1)
+    ) AS tnpA_nt_seq,
+    substr(s.seq, o.target_from_coord, (o.target_to_coord - o.target_from_coord + 1)) as oriIS_seq,
+    substr(s.seq,
+      CASE WHEN (t.target_from_coord - 50) < 1 THEN 1 ELSE (t.target_from_coord - 50) END,
+      (o.target_to_coord - t.target_from_coord + 1) + 50
+    ) AS full_seq
+  FROM tnpA_features f
+    JOIN terIS t ON t.target_name = f.tnpa_seqsig
+        AND t.strand = '+'
+        AND CAST(t.target_from_coord AS INT) <= CAST(f.rel_start AS INT) + 10
+    JOIN oriIS o ON o.target_name = f.tnpa_seqsig
+        AND o.strand = '+'
+        AND CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
+    JOIN tnpA_seqs s on s.tnpa_seqsig=f.tnpa_seqsig
+  WHERE
+    CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
+  " > ${BASE_PATH}/signatures_report_qcov${COVERAGE}_${FLANKING_SEQ_LEN}.tsv
+else
+  sqlite3 ${sqlitedb} '.separator "\t"' '.import "'${ORF121OUT}'/all.orf121.tsv" orf121'
+  sqlite3 ${sqlitedb} '.separator "\t"' '.import "'${ORF121OUT}'/best_hits.orf121.filtered.tsv" orf121_best'
+  sqlite3 ${sqlitedb} '.headers on' '.separator "\t"' "
+  SELECT
+    f.tnpa_seqsig,
+    f.tnpA_hit,
+    f.assembly tnpA_hit_assembly,
+    f.chr tnpA_hit_chr,
+    f.start tnpA_hit_start,
+    f.end tnpA_hit_end,
+    f.strand tnpA_hit_strand,
+    f.ident tnpA_hit_identity,
+    f.coverage tnpA_hit_coverage,
+    f.gene_name tnpA_hit_genename,
+    f.gene_desc tnpA_hit_genedesc,
+    t.target_from_coord terIS_start,
+    t.target_to_coord terIS_end,
+    t.evalue terIS_evalue,
+    orf.start orf121_pred_start,
+    orf.end orf121_pred_end,
+    orf.length orf121_pred_length,
+    f.rel_start tnpA_rel_start,
+    f.rel_end tnpA_rel_end,
+    o.target_from_coord oriIS_start,
+    o.target_to_coord oriIS_end,
+    o.evalue oriIS_evalue,
+    orf.sequence orf121_pred_sequence,
+    b.pident orf121_hit_pident,
+    b.mismatch orf121_hit_mismatch,
+    b.gapopen orf121_hit_gapopen,
+    b.evalue orf121_hit_evalue,
+    b.bitscore orf121_hit_bitscore,
+    b.scov orf121_hit_coverage,
+    substr(s.seq, t.target_from_coord, (t.target_to_coord - t.target_from_coord + 1)) as terIS_seq,
+    substr(
+        s.seq,
+        orf.start,
+        (length(orf.sequence) + 1) * 3
+    ) AS orf121_nt_seq,
+    substr(s.seq,
+        CASE
+            WHEN f.strand = '+' THEN
+                (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
+            WHEN f.strand = '-' THEN
+                (CASE WHEN (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN}) > CAST(f.chr_len AS INT) THEN (CAST(f.chr_len AS INT) - CAST(f.end AS INT) + 1) ELSE (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN} - CAST(f.end AS INT) + 1) END)
+        END,
+        (f.end - f.start + 1)
+    ) AS tnpA_nt_seq,
+    substr(s.seq, o.target_from_coord, (o.target_to_coord - o.target_from_coord + 1)) as oriIS_seq,
+    substr(s.seq,
+      CASE WHEN (t.target_from_coord - 50) < 1 THEN 1 ELSE (t.target_from_coord - 50) END,
+      (o.target_to_coord - t.target_from_coord + 1) + 50
+    ) AS full_seq
+  FROM tnpA_features f
+    JOIN terIS t ON t.target_name = f.tnpa_seqsig
+        AND t.strand = '+'
+        AND CAST(t.target_from_coord AS INT) <= CAST(f.rel_start AS INT) + 10
+    JOIN oriIS o ON o.target_name = f.tnpa_seqsig
+        AND o.strand = '+'
+        AND CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
+    LEFT JOIN orf121 orf on orf.target_name=f.tnpa_seqsig
+        AND CAST(orf.end AS INT) <= CAST(f.rel_start AS INT) + 60
+    JOIN orf121_best b on b.orf121_name=orf.orf121_name
+    JOIN tnpA_seqs s on s.tnpa_seqsig=f.tnpa_seqsig
+  WHERE
+    CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
+  " > ${BASE_PATH}/signatures_report_qcov${COVERAGE}_${FLANKING_SEQ_LEN}.tsv
+fi
 
 echo "##### zipping results in ${ROOT_PATH}/${n}_qcov${COVERAGE}.zip #####"
 cd ${ROOT_PATH}
