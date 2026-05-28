@@ -72,6 +72,8 @@ echo "Running with $NCORES cores at $COVERAGE% coverage."
 echo "FASTA: $TNPA_FA"
 echo "Base Path: $BASE_PATH"
 echo "Flanking tnpA seq length: $FLANKING_SEQ_LEN"
+echo "SKIP_BLAST_STEP: $SKIP_BLAST_STEP"
+echo "FIND_ORF121_STEP: $FIND_ORF121"
 
 do_parallel_blast_pep() {
     local fa=$1
