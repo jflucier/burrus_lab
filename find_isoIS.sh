@@ -413,7 +413,7 @@ fi
 echo "##### extracting isoform sequences from blast hits #####"
 module purge 2>/dev/null
 ml StdEnv/2020 samtools/1.17 2>/dev/null
-FILTERED_TSV=${TNPAOUT}/blast.qcov${COVERAGE}.filtered.tsv
+FILTERED_TSV=${TNPAOUT}/blast.qcov${COVERAGE}.tsv
 mkdir -p ${XTRACTOUT}/out/
 rm -f ${XTRACTOUT}/out/*
 
