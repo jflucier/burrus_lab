@@ -50,11 +50,11 @@ if [ -z "$ORI" ]; then
     exit 1
 fi
 
-if [ -z "$ORI" ]; then
-    echo "Error: The -o or --ori_model option is required."
-    exit 1
-fi
-
+echo "##### Provided PARAMETERS: ######"
+echo "##### FASTA: ${FA} ######"
+echo "##### TER: $TER ######"
+echo "##### SKIP_BLAST_STEP: $SKIP_BLAST_STEP ######"
+echo "##### FIND_ORF121: $FIND_ORF121 ######"
 
 for f in 1000 2000 10000
 do
