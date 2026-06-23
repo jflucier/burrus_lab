@@ -62,7 +62,7 @@ do
   do
     echo "running coverage=$c and flanking=$f on ${FA}"
     /net/nfs-bio/fast/def-burrusvi/programs/burrus_lab/find_isoIS.sh \
-    -f IS_fasta/${FA}.fa \
+    -f ${FA} \
     -r $PWD -n ${SLURM_CPUS_PER_TASK} -c $c -l $f \
     -t ${TER} \
     -o ${ORI} \
