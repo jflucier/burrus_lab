@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --nodes 1
 #SBATCH --ntasks 1
-#SBATCH --cpus-per-task 30
+#SBATCH --cpus-per-task 10
 #SBATCH --mem 80gb
 #SBATCH --time 72:00:00
 #SBATCH --output=find_iso_%A.log
