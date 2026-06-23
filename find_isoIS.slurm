@@ -5,12 +5,15 @@
 #SBATCH --mem 80gb
 #SBATCH --time 72:00:00
 #SBATCH --output=find_iso_%A.log
+#SBATCH -A def-burrusvi
 
 ## to call
 #sbatch find_isoIS.slurm \
 #--fasta '/path/to/fa' \
 #--ter_model '/path/to/model' \
 #--ori_model '/path/to/model'
+#--skip_blast_step 'true|false' \
+#--find_orf121 'true|false'
 
 FA=""
 ORI=""
