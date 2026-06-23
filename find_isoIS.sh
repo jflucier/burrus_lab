@@ -3,7 +3,7 @@
 # --- Set Defaults ---
 NCORES=32
 COVERAGE=75
-GENOMES="/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
+GENOMES="/net/nfs-bio/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
 SKIP_BLAST_STEP="false"
 FIND_ORF121="true"
 
@@ -419,9 +419,11 @@ rm -f ${XTRACTOUT}/out/*
 
 echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
 # Use Parallel to run the extraction
-total_lines=$(tail -n +2 "$FILTERED_TSV" | wc -l)
+#total_lines=$(tail -n +2 "$FILTERED_TSV" | wc -l)
+#tail -n +2 "$FILTERED_TSV" | \
+#pv -l -s "$total_lines" | \
+#parallel --jobs "$NCORES" extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 tail -n +2 "$FILTERED_TSV" | \
-pv -l -s "$total_lines" | \
 parallel --jobs "$NCORES" extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 
 # gen sequence tsv for db import
