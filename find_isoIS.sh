@@ -53,7 +53,7 @@ export ORIIS_MODEL=${ORIIS_MODEL:-"/fast/def-burrusvi/20260512_isoIS_others/mode
 #module purge 2>/dev/null
 #ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 2>/dev/null
 #makeblastdb -in "IS_fasta/isoforms_IS91_orf121_aa.fa" -dbtype prot -logfile /dev/null
-export ORF121_BLASTDB=${ORF121_BLASTDB:-"/fast/def-burrusvi/20260323_isoIS91/IS_fasta/isoforms_IS91_orf121_aa.fa"}
+export ORF121_BLASTDB=${ORF121_BLASTDB:-"/net/nfs-bio/fast/def-burrusvi/20260323_isoIS91/IS_fasta/isoforms_IS91_orf121_aa.fa"}
 
 export FLANKING_SEQ_LEN=${FLANKING_SEQ_LEN:-"2000"}
 
