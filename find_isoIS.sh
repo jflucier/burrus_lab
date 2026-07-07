@@ -83,14 +83,14 @@ if [[ ! -f "$GENOME_MAP_FILE" ]]; then
     exit 1
 fi
 
-echo "Reading Genome Map File $GENOME_MAP_FILE"
-declare -A GENOME_MAP
-while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
-    [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
-    b_pep=$(basename "$pep_file")
-    k_name="${b_pep%.all.fa.gz}"
-    GENOME_MAP["$k_name"]="$dna_file"
-done < "$GENOME_MAP_FILE"
+#echo "Reading Genome Map File $GENOME_MAP_FILE"
+#declare -A GENOME_MAP
+#while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
+#    [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
+#    b_pep=$(basename "$pep_file")
+#    k_name="${b_pep%.all.fa.gz}"
+#    GENOME_MAP["$k_name"]="$dna_file"
+#done < "$GENOME_MAP_FILE"
 
 #export GENOME_MAP
 
@@ -162,12 +162,19 @@ extract_and_feature() {
     local n=$(basename "$blast_fname" .pep_tnpa_hits.txt)
 
     # 1. Find Genome (Lowercase logic included for safety)
-    # In-memory optimization lookup
-    if [[ -z "${GENOME_MAP[$n]}" ]]; then
-        echo "Error: Local genome path lookup failed for assembly identifier string: $n" >&2
+#    # In-memory optimization lookup
+#    if [[ -z "${GENOME_MAP[$n]}" ]]; then
+#        echo "Error: Local genome path lookup failed for assembly identifier string: $n" >&2
+#        return 1
+#    fi
+#    local fa_gz="${GENOME_MAP[$n]}"
+
+    # Instant RAM lookup from the worker's map copy
+    local fa_gz="${GENOME_MAP[$n]}"
+    if [[ -z "$fa_gz" ]]; then
+        echo "Error: Local genome path lookup failed for assembly key: $n" >&2
         return 1
     fi
-    local fa_gz="${GENOME_MAP[$n]}"
 
     # 2. Prepare Temp (Use BASHPID for thread safety)
     local tmp_fa="tmp_${n}_${BASHPID}.fa"
@@ -408,6 +415,21 @@ do_translation() {
 }
 export -f do_translation
 
+init_worker_map() {
+    # Declare the array locally inside the persistent worker subshell
+    declare -g -A GENOME_MAP
+    echo "Reading Genome Map File $GENOME_MAP_FILE"
+
+    while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
+        [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
+        local b_pep
+        b_pep=$(basename "$pep_file")
+        local k_name="${b_pep%.all.fa.gz}"
+        GENOME_MAP["$k_name"]="$dna_file"
+    done < "$GENOME_MAP_FILE"
+}
+export -f init_worker_map
+
 if [[ ${SKIP_BLAST_STEP} != "false" ]]; then
   echo "##### Skipping tnpA blast step #####"
 else
@@ -443,7 +465,10 @@ rm -f ${XTRACTOUT}/out/*
 echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
 # Use Parallel to run the extraction
 tail -n +2 "$FILTERED_TSV" | \
-parallel --jobs "$NCORES" --env GENOME_MAP extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
+parallel --jobs "$NCORES" \
+  --env GENOME_MAP_FILE \
+  --init 'init_worker_map' \
+  extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 
 # gen sequence tsv for db import
 echo -e "tnpa_seqsig\tseq" > ${XTRACTOUT}/tnpA_seqs.fastas.tsv

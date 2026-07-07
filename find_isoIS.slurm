@@ -95,7 +95,8 @@ do
     -r $PWD -n ${SLURM_CPUS_PER_TASK} -c $c -l $f \
     -t ${TER} \
     -o ${ORI} \
-    -s ${SKIP_BLAST_STEP} -z ${FIND_ORF121}
+    -s ${SKIP_BLAST_STEP} -z ${FIND_ORF121} \
+    -m ${GENOME_MAP_FILE}
   done
 done
 
