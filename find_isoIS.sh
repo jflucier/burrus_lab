@@ -107,6 +107,7 @@ while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
     MAP_KEYS+=("$k_name")
     MAP_VALUES+=("$dna_file")
 done < "$GENOME_MAP_FILE"
+echo "##### Loading genome map DONE! #####"
 
 # Export the arrays so GNU Parallel workers can see them
 export MAP_KEYS
