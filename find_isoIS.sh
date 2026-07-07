@@ -3,7 +3,8 @@
 # --- Set Defaults ---
 NCORES=32
 COVERAGE=75
-GENOMES="/net/nfs-bio/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
+#GENOMES="/net/nfs-bio/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/fasta"
+GENOME_MAP_FILE="/net/nfs-bio/fast/def-burrusvi/20260323_isoIS91/ensembl_bacteria/Release_62/genome_map.tsv"
 SKIP_BLAST_STEP="false"
 FIND_ORF121="true"
 
@@ -13,22 +14,23 @@ ROOT_PATH=""
 
 # --- Parse Arguments ---
 usage() {
-    echo "Usage: $0 -f <tnpa_fasta> -r <root_path> [-n ncores] [-c coverage] [-g genomes_path] [-t teris_model] [-o oriis_model] [-s skip_blast_step]"
+    echo "Usage: $0 -f <tnpa_fasta> -r <root_path> [-n ncores] [-c coverage] [-g genomes_path] [-t teris_model] [-o oriis_model] [-s skip_blast_step] [-z find_orf121] [-m genome_map]"
     exit 1
 }
 
-while getopts "f:r:n:c:g:t:o:l:s:z:" opt; do
+while getopts "f:r:n:c:g:t:o:l:s:z:m:" opt; do
   case $opt in
     f) TNPA_FA="$OPTARG" ;;
     r) ROOT_PATH="$OPTARG" ;;
     n) NCORES="$OPTARG" ;;
     c) COVERAGE="$OPTARG" ;;
-    g) GENOMES="$OPTARG" ;;
+#    g) GENOMES="$OPTARG" ;;
     t) TERIS_MODEL="$OPTARG" ;;
     o) ORIIS_MODEL="$OPTARG" ;;
     l) FLANKING_SEQ_LEN="$OPTARG" ;;
     s) SKIP_BLAST_STEP="$OPTARG" ;;
     z) FIND_ORF121="$OPTARG" ;;
+    m) GENOME_MAP_FILE="$OPTARG" ;; # Intercept custom file maps
     *) usage ;;
   esac
 done
@@ -54,12 +56,12 @@ export ORIIS_MODEL=${ORIIS_MODEL:-"/fast/def-burrusvi/20260512_isoIS_others/mode
 #ml StdEnv/2020 gcc/9.3.0 blast+/2.14.0 2>/dev/null
 #makeblastdb -in "IS_fasta/isoforms_IS91_orf121_aa.fa" -dbtype prot -logfile /dev/null
 export ORF121_BLASTDB=${ORF121_BLASTDB:-"/net/nfs-bio/fast/def-burrusvi/20260323_isoIS91/IS_fasta/isoforms_IS91_orf121_aa.fa"}
-
 export FLANKING_SEQ_LEN=${FLANKING_SEQ_LEN:-"2000"}
 
 
 # --- Export everything else ---
-export NCORES COVERAGE GENOMES TNPA_FA
+#export GENOMES
+export NCORES COVERAGE TNPA_FA
 export TNPAOUT="${BASE_PATH}/tnpA_search"
 export XTRACTOUT="${BASE_PATH}/tnpA_seqs_${FLANKING_SEQ_LEN}"
 export TERISOUT="${BASE_PATH}/terIS_search_${FLANKING_SEQ_LEN}"
@@ -74,6 +76,22 @@ echo "Base Path: $BASE_PATH"
 echo "Flanking tnpA seq length: $FLANKING_SEQ_LEN"
 echo "SKIP_BLAST_STEP: $SKIP_BLAST_STEP"
 echo "FIND_ORF121_STEP: $FIND_ORF121"
+echo "Genome Map File: $GENOME_MAP_FILE"
+
+if [[ ! -f "$GENOME_MAP_FILE" ]]; then
+    echo "Error: Genome mapping file missing or unreachable at: $GENOME_MAP_FILE" >&2
+    exit 1
+fi
+
+declare -A GENOME_MAP
+while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
+    [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
+    b_pep=$(basename "$pep_file")
+    k_name="${b_pep%.all.fa.gz}"
+    GENOME_MAP["$k_name"]="$dna_file"
+done < "$GENOME_MAP_FILE"
+
+export GENOME_MAP
 
 do_parallel_blast_pep() {
     local fa=$1
@@ -143,8 +161,12 @@ extract_and_feature() {
     local n=$(basename "$blast_fname" .pep_tnpa_hits.txt)
 
     # 1. Find Genome (Lowercase logic included for safety)
-    local fa_gz=$(find "${GENOMES}" -path "*/dna/${n}*.dna.toplevel.fa.gz" | head -n 1)
-    [[ -z "$fa_gz" ]] && { echo "Error: Genome $n not found" >&2; return 1; }
+    # In-memory optimization lookup
+    if [[ -z "${GENOME_MAP[$n]}" ]]; then
+        echo "Error: Local genome path lookup failed for assembly identifier string: $n" >&2
+        return 1
+    fi
+    local fa_gz="${GENOME_MAP[$n]}"
 
     # 2. Prepare Temp (Use BASHPID for thread safety)
     local tmp_fa="tmp_${n}_${BASHPID}.fa"
@@ -394,8 +416,8 @@ else
 
   mkdir -p ${TNPAOUT}/blast.qcov${COVERAGE}
   find "${TNPAOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
-  total_files=$(find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | wc -l)
-  find ${GENOMES}/ -path "*/pep/*.pep.all.fa.gz" | \
+  total_files=$(awk -F'\t' '{print $1}' "$GENOME_MAP_FILE" | wc -l)
+  awk -F'\t' '{print $1}' "$GENOME_MAP_FILE" | \
       pv -l -s "$total_files" | \
       parallel --jobs ${NCORES} do_parallel_blast_pep {}
 
@@ -419,10 +441,6 @@ rm -f ${XTRACTOUT}/out/*
 
 echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
 # Use Parallel to run the extraction
-#total_lines=$(tail -n +2 "$FILTERED_TSV" | wc -l)
-#tail -n +2 "$FILTERED_TSV" | \
-#pv -l -s "$total_lines" | \
-#parallel --jobs "$NCORES" extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 tail -n +2 "$FILTERED_TSV" | \
 parallel --jobs "$NCORES" extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 
@@ -501,29 +519,46 @@ rm -f ${sqlitedb}
 #.quit
 #EOF
 
-sqlite3 ${sqlitedb} <<EOF
-.mode tabs
-.import "${XTRACTOUT}/tnpA_seqs.features.tsv" tnpA_features
-.quit
-EOF
+sqlite3 "${sqlitedb}" "CREATE TABLE tnpA_features(filename TEXT, tnpa_seqsig TEXT PRIMARY KEY, tnpA_hit TEXT, assembly TEXT, chr TEXT, chr_len INTEGER, start INTEGER, end INTEGER, strand TEXT, ident REAL, coverage REAL, gene_name TEXT, gene_desc TEXT, rel_start INTEGER, rel_end INTEGER);"
+sqlite3 "${sqlitedb}" "CREATE TABLE tnpA_seqs(tnpa_seqsig TEXT PRIMARY KEY, seq TEXT);"
+sqlite3 "${sqlitedb}" "CREATE TABLE terIS(target_name TEXT, accession TEXT, query_name TEXT, query_accession TEXT, model_type TEXT, model_from_coord INTEGER, model_to_coord INTEGER, target_from_coord INTEGER, target_to_coord INTEGER, strand TEXT, trunc TEXT, pass TEXT, gc REAL, bias REAL, score REAL, evalue REAL, inc TEXT, mdl_len INTEGER, seq_len INTEGER, description TEXT);"
+sqlite3 "${sqlitedb}" "CREATE TABLE oriIS(target_name TEXT, accession TEXT, query_name TEXT, query_accession TEXT, model_type TEXT, model_from_coord INTEGER, model_to_coord INTEGER, target_from_coord INTEGER, target_to_coord INTEGER, strand TEXT, trunc TEXT, pass TEXT, gc REAL, bias REAL, score REAL, evalue REAL, inc TEXT, mdl_len INTEGER, seq_len INTEGER, description TEXT);"
 
-sqlite3 ${sqlitedb} <<EOF
-.mode tabs
-.import ${XTRACTOUT}/tnpA_seqs.fastas.tsv tnpA_seqs
-.quit
-EOF
+# 2. MANDATORY NATIVE IMPORTS: These are safely formatted as clean, distinct execution arguments
+sqlite3 "${sqlitedb}" ".mode tabs" ".import '${XTRACTOUT}/tnpA_seqs.features.tsv' tnpA_features"
+sqlite3 "${sqlitedb}" ".mode tabs" ".import '${XTRACTOUT}/tnpA_seqs.fastas.tsv' tnpA_seqs"
+sqlite3 "${sqlitedb}" ".mode tabs" ".import '${TERISOUT}/all.teris.tsv' terIS"
+sqlite3 "${sqlitedb}" ".mode tabs" ".import '${ORIISOUT}/all.oriis.tsv' oriIS"
 
-sqlite3 ${sqlitedb} <<EOF
-.mode tabs
-.import "${TERISOUT}/all.teris.tsv" terIS
-.quit
-EOF
+# 3. FIX: Drop the raw string headers that bleed into row 1 during bulk imports
+sqlite3 "${sqlitedb}" "DELETE FROM tnpA_features WHERE filename = 'filename';"
+sqlite3 "${sqlitedb}" "DELETE FROM tnpA_seqs WHERE tnpa_seqsig = 'tnpa_seqsig';"
+sqlite3 "${sqlitedb}" "DELETE FROM terIS WHERE target_name = 'target_name';"
+sqlite3 "${sqlitedb}" "DELETE FROM oriIS WHERE target_name = 'target_name';"
 
-sqlite3 ${sqlitedb} <<EOF
-.mode tabs
-.import "${ORIISOUT}/all.oriis.tsv" oriIS
-.quit
-EOF
+#sqlite3 ${sqlitedb} <<EOF
+#.mode tabs
+#.import "${XTRACTOUT}/tnpA_seqs.features.tsv" tnpA_features
+#.quit
+#EOF
+#
+#sqlite3 ${sqlitedb} <<EOF
+#.mode tabs
+#.import ${XTRACTOUT}/tnpA_seqs.fastas.tsv tnpA_seqs
+#.quit
+#EOF
+#
+#sqlite3 ${sqlitedb} <<EOF
+#.mode tabs
+#.import "${TERISOUT}/all.teris.tsv" terIS
+#.quit
+#EOF
+#
+#sqlite3 ${sqlitedb} <<EOF
+#.mode tabs
+#.import "${ORIISOUT}/all.oriis.tsv" oriIS
+#.quit
+#EOF
 
 if [[ ${FIND_ORF121} != "true" ]]; then
     sqlite3 ${sqlitedb} '.headers on' '.separator "\t"' "
@@ -550,10 +585,8 @@ if [[ ${FIND_ORF121} != "true" ]]; then
     substr(s.seq, t.target_from_coord, (t.target_to_coord - t.target_from_coord + 1)) as terIS_seq,
     substr(s.seq,
         CASE
-            WHEN f.strand = '+' THEN
-                (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
-            WHEN f.strand = '-' THEN
-                (CASE WHEN (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN}) > CAST(f.chr_len AS INT) THEN (CAST(f.chr_len AS INT) - CAST(f.end AS INT) + 1) ELSE (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN} - CAST(f.end AS INT) + 1) END)
+            WHEN f.strand = '+' THEN (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
+            WHEN f.strand = '-' THEN (CASE WHEN (f.end + ${FLANKING_SEQ_LEN}) > f.chr_len THEN (f.chr_len - f.end + 1) ELSE (f.end + ${FLANKING_SEQ_LEN} - f.end + 1) END)
         END,
         (f.end - f.start + 1)
     ) AS tnpA_nt_seq,
@@ -563,19 +596,24 @@ if [[ ${FIND_ORF121} != "true" ]]; then
       (o.target_to_coord - t.target_from_coord + 1) + 50
     ) AS full_seq
   FROM tnpA_features f
-    JOIN terIS t ON t.target_name = f.tnpa_seqsig
-        AND t.strand = '+'
-        AND CAST(t.target_from_coord AS INT) <= CAST(f.rel_start AS INT) + 10
-    JOIN oriIS o ON o.target_name = f.tnpa_seqsig
-        AND o.strand = '+'
-        AND CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
+    JOIN terIS t ON t.target_name = f.tnpa_seqsig AND t.strand = '+' AND t.target_from_coord <= f.rel_start + 10
+    JOIN oriIS o ON o.target_name = f.tnpa_seqsig AND o.strand = '+' AND o.target_from_coord >= f.rel_end - 10
     JOIN tnpA_seqs s on s.tnpa_seqsig=f.tnpa_seqsig
   WHERE
-    CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
+    o.target_from_coord >= f.rel_end - 10;
   " > ${BASE_PATH}/signatures_report_qcov${COVERAGE}_${FLANKING_SEQ_LEN}.tsv
 else
-  sqlite3 ${sqlitedb} '.separator "\t"' '.import "'${ORF121OUT}'/all.orf121.tsv" orf121'
-  sqlite3 ${sqlitedb} '.separator "\t"' '.import "'${ORF121OUT}'/best_hits.orf121.filtered.tsv" orf121_best'
+#  sqlite3 ${sqlitedb} '.separator "\t"' '.import "'${ORF121OUT}'/all.orf121.tsv" orf121'
+#  sqlite3 ${sqlitedb} '.separator "\t"' '.import "'${ORF121OUT}'/best_hits.orf121.filtered.tsv" orf121_best'
+  sqlite3 "${sqlitedb}" "CREATE TABLE orf121(orf121_name TEXT, target_name TEXT, start INTEGER, end INTEGER, length INTEGER, sequence TEXT);"
+  sqlite3 "${sqlitedb}" "CREATE TABLE orf121_best(orf121_name TEXT, target_name TEXT, orf121_hit TEXT, pident REAL, target_length INTEGER, mismatch INTEGER, gapopen INTEGER, target_start INTEGER, target_end INTEGER, orf121_hit_start INTEGER, orf121_hit_end INTEGER, evalue REAL, bitscore REAL, orf121_hit_length INTEGER, target_align TEXT, orf121_hit_align TEXT, scov REAL);"
+
+  sqlite3 "${sqlitedb}" ".mode tabs" ".import '${ORF121OUT}/all.orf121.tsv' orf121"
+  sqlite3 "${sqlitedb}" ".mode tabs" ".import '${ORF121OUT}/best_hits.orf121.filtered.tsv' orf121_best"
+
+  sqlite3 "${sqlitedb}" "DELETE FROM orf121 WHERE orf121_name = 'orf121_name';"
+  sqlite3 "${sqlitedb}" "DELETE FROM orf121_best WHERE orf121_name = 'orf121_name';"
+
   sqlite3 ${sqlitedb} '.headers on' '.separator "\t"' "
   SELECT
     f.tnpa_seqsig,
@@ -615,10 +653,8 @@ else
     ) AS orf121_nt_seq,
     substr(s.seq,
         CASE
-            WHEN f.strand = '+' THEN
-                (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
-            WHEN f.strand = '-' THEN
-                (CASE WHEN (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN}) > CAST(f.chr_len AS INT) THEN (CAST(f.chr_len AS INT) - CAST(f.end AS INT) + 1) ELSE (CAST(f.end AS INT) + ${FLANKING_SEQ_LEN} - CAST(f.end AS INT) + 1) END)
+            WHEN f.strand = '+' THEN (f.start - CASE WHEN f.start - ${FLANKING_SEQ_LEN} < 1 THEN 1 ELSE f.start - ${FLANKING_SEQ_LEN} END + 1)
+            WHEN f.strand = '-' THEN (CASE WHEN (f.end + ${FLANKING_SEQ_LEN}) > f.chr_len THEN (f.chr_len - f.end + 1) ELSE (f.end + ${FLANKING_SEQ_LEN} - f.end + 1) END)
         END,
         (f.end - f.start + 1)
     ) AS tnpA_nt_seq,
@@ -628,18 +664,13 @@ else
       (o.target_to_coord - t.target_from_coord + 1) + 50
     ) AS full_seq
   FROM tnpA_features f
-    JOIN terIS t ON t.target_name = f.tnpa_seqsig
-        AND t.strand = '+'
-        AND CAST(t.target_from_coord AS INT) <= CAST(f.rel_start AS INT) + 10
-    JOIN oriIS o ON o.target_name = f.tnpa_seqsig
-        AND o.strand = '+'
-        AND CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
-    LEFT JOIN orf121 orf on orf.target_name=f.tnpa_seqsig
-        AND CAST(orf.end AS INT) <= CAST(f.rel_start AS INT) + 60
+    JOIN terIS t ON t.target_name = f.tnpa_seqsig AND t.strand = '+' AND t.target_from_coord <= f.rel_start + 10
+    JOIN oriIS o ON o.target_name = f.tnpa_seqsig AND o.strand = '+' AND o.target_from_coord >= f.rel_end - 10
+    LEFT JOIN orf121 orf on orf.target_name=f.tnpa_seqsig AND orf.end <= f.rel_start + 60
     JOIN orf121_best b on b.orf121_name=orf.orf121_name
     JOIN tnpA_seqs s on s.tnpa_seqsig=f.tnpa_seqsig
   WHERE
-    CAST(o.target_from_coord AS INT) >= CAST(f.rel_end AS INT) - 10
+    o.target_from_coord >= f.rel_end - 10;
   " > ${BASE_PATH}/signatures_report_qcov${COVERAGE}_${FLANKING_SEQ_LEN}.tsv
 fi
 
