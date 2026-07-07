@@ -164,7 +164,7 @@ extract_and_feature() {
             [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
             local b_pep
             b_pep=$(basename "$pep_file")
-            local k_name="${b_pep%.all.fa.gz}"
+            local k_name="${b_pep%.pep.all.fa.gz}"
             GENOME_MAP["$k_name"]="$dna_file"
         done < "$GENOME_MAP_FILE"
     fi
