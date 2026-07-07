@@ -156,6 +156,18 @@ extract_and_feature() {
     # Parallel passes the whole line as $1
     local line="$1"
 
+    # If the thread's array has not been built yet, parse the TSV into memory now
+    if [[ -z "${GENOME_MAP[*]}" ]]; then
+        declare -g -A GENOME_MAP
+        while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
+            [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
+            local b_pep
+            b_pep=$(basename "$pep_file")
+            local k_name="${b_pep%.all.fa.gz}"
+            GENOME_MAP["$k_name"]="$dna_file"
+        done < "$GENOME_MAP_FILE"
+    fi
+
     # Use read to split the tab-separated line into variables
     # This must match your 24-column TSV structure exactly
     IFS=$'\t' read -r blast_fname qid sid pident len mis gap qstart qend sstart send eval bit slen gaps stitle qcov assembly chr gstart gend gstrand gene_name gene_desc <<< "$line"
@@ -415,20 +427,20 @@ do_translation() {
 }
 export -f do_translation
 
-init_worker_map() {
-    # Declare the array locally inside the persistent worker subshell
-    declare -g -A GENOME_MAP
-    echo "Reading Genome Map File $GENOME_MAP_FILE"
-
-    while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
-        [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
-        local b_pep
-        b_pep=$(basename "$pep_file")
-        local k_name="${b_pep%.all.fa.gz}"
-        GENOME_MAP["$k_name"]="$dna_file"
-    done < "$GENOME_MAP_FILE"
-}
-export -f init_worker_map
+#init_worker_map() {
+#    # Declare the array locally inside the persistent worker subshell
+#    declare -g -A GENOME_MAP
+#    echo "Reading Genome Map File $GENOME_MAP_FILE"
+#
+#    while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
+#        [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
+#        local b_pep
+#        b_pep=$(basename "$pep_file")
+#        local k_name="${b_pep%.all.fa.gz}"
+#        GENOME_MAP["$k_name"]="$dna_file"
+#    done < "$GENOME_MAP_FILE"
+#}
+#export -f init_worker_map
 
 if [[ ${SKIP_BLAST_STEP} != "false" ]]; then
   echo "##### Skipping tnpA blast step #####"
@@ -467,7 +479,6 @@ echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tst
 tail -n +2 "$FILTERED_TSV" | \
 parallel --jobs "$NCORES" \
   --env GENOME_MAP_FILE \
-  --init 'init_worker_map' \
   extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 
 # gen sequence tsv for db import
