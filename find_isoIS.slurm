@@ -67,23 +67,20 @@ else
 
     # Find the protein files once
     find "$GENOMES_DIR" -path "*/pep/*.pep.all.fa.gz" | while read -r pep_path; do
-        # Extract the directory containing the pep file (e.g., .../bradyrhizobium_sp_.../pep)
         pep_dir=$(dirname "$pep_path")
 
-        # Navigate directly to the sibling dna directory and resolve the wildcard
-        # Ensembl adds a trailing underscore after the assembly version string in the DNA file name
+        # Safely capture the DNA file path
         dna_path_array=("$pep_dir/../dna/"*.dna.toplevel.fa.gz)
 
-        # Verify that the file exists and is not an unexpanded wildcard string
         if [[ -f "${dna_path_array[0]}" ]]; then
-            echo -e "${pep_path}\t${dna_path_array[0]}" >> "$MAP_FILE"
+            # FIX: Use printf to guarantee a literal tab character (\t) is written to disk
+            printf "%s\t%s\n" "$pep_path" "${dna_path_array[0]}" >> "$MAP_FILE"
         fi
     done
     echo "##### Genome file mapping complete: saved to ${MAP_FILE} #####"
 fi
 
 export GENOME_MAP_FILE="$MAP_FILE"
-
 
 for f in 1000 2000 10000
 do
