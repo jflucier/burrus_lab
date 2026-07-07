@@ -83,6 +83,7 @@ if [[ ! -f "$GENOME_MAP_FILE" ]]; then
     exit 1
 fi
 
+echo "Reading Genome Map File $GENOME_MAP_FILE"
 declare -A GENOME_MAP
 while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
     [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
@@ -91,7 +92,7 @@ while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
     GENOME_MAP["$k_name"]="$dna_file"
 done < "$GENOME_MAP_FILE"
 
-export GENOME_MAP
+#export GENOME_MAP
 
 do_parallel_blast_pep() {
     local fa=$1
@@ -442,7 +443,7 @@ rm -f ${XTRACTOUT}/out/*
 echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
 # Use Parallel to run the extraction
 tail -n +2 "$FILTERED_TSV" | \
-parallel --jobs "$NCORES" extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
+parallel --jobs "$NCORES" --env GENOME_MAP extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 
 # gen sequence tsv for db import
 echo -e "tnpa_seqsig\tseq" > ${XTRACTOUT}/tnpA_seqs.fastas.tsv
