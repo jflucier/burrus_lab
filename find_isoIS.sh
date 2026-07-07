@@ -509,6 +509,7 @@ echo "##### extracting isoform sequences from blast hits #####"
 module purge 2>/dev/null
 ml StdEnv/2020 samtools/1.17 2>/dev/null
 FILTERED_TSV=${TNPAOUT}/blast.qcov${COVERAGE}.tsv
+echo "XTRACTOUT=${XTRACTOUT}"
 mkdir -p ${XTRACTOUT}/out/
 find "${XTRACTOUT}/out/" -maxdepth 1 -name "*_seqs.fasta" -delete
 
