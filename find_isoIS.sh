@@ -158,6 +158,7 @@ extract_and_feature() {
 
     # If the thread's array has not been built yet, parse the TSV into memory now
     if [[ -z "${GENOME_MAP[*]}" ]]; then
+        echo "reading map file"
         declare -g -A GENOME_MAP
         while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
             [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
