@@ -510,7 +510,7 @@ module purge 2>/dev/null
 ml StdEnv/2020 samtools/1.17 2>/dev/null
 FILTERED_TSV=${TNPAOUT}/blast.qcov${COVERAGE}.tsv
 mkdir -p ${XTRACTOUT}/out/
-rm -f ${XTRACTOUT}/out/*
+find "${XTRACTOUT}/out/" -maxdepth 1 -name "*_seqs.fasta" -delete
 
 echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
 # Use Parallel to run the extraction
@@ -524,7 +524,9 @@ parallel --jobs "$NCORES" \
 
 # gen sequence tsv for db import
 echo -e "tnpa_seqsig\tseq" > ${XTRACTOUT}/tnpA_seqs.fastas.tsv
-awk '/^>/ { if (header) print header "\t" seq; header = substr($0,2); seq = ""; next } { seq = seq $0 } END { if (header) print header "\t" seq }' ${XTRACTOUT}/out/*_seqs.fasta >> ${XTRACTOUT}/tnpA_seqs.fastas.tsv
+find "${XTRACTOUT}/out/" -maxdepth 1 -name "*_seqs.fasta" -exec cat {} + | \
+awk '/^>/ { if (header) print header "\t" seq; header = substr($0,2); seq = ""; next } { seq = seq $0 } END { if (header) print header "\t" seq }' >> ${XTRACTOUT}/tnpA_seqs.fastas.tsv
+#awk '/^>/ { if (header) print header "\t" seq; header = substr($0,2); seq = ""; next } { seq = seq $0 } END { if (header) print header "\t" seq }' ${XTRACTOUT}/out/*_seqs.fasta >> ${XTRACTOUT}/tnpA_seqs.fastas.tsv
 
 ##### Step 3: finding terIS #####
 echo "##### finding terIS #####"
