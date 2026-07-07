@@ -109,8 +109,14 @@ while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
 done < "$GENOME_MAP_FILE"
 
 # Flatten using newlines to guarantee spaces in file paths do not break splitting
-printf -v FLAT_KEYS "%s\n" "${MAP_KEYS[@]}"
-printf -v FLAT_VALUES "%s\n" "${MAP_VALUES[@]}"
+export KEY_FILE="${XTRACTOUT}/.worker_keys.tmp"
+export VALUE_FILE="${XTRACTOUT}/.worker_values.tmp"
+printf "%s\n" "${MAP_KEYS[@]}" > "$KEY_FILE"
+printf "%s\n" "${MAP_VALUES[@]}" > "$VALUE_FILE"
+#printf -v FLAT_KEYS "%s\n" "${MAP_KEYS[@]}"
+#printf -v FLAT_VALUES "%s\n" "${MAP_VALUES[@]}"
+export KEY_FILE
+export VALUE_FILE
 echo "##### Loading genome map DONE! #####"
 
 
@@ -209,8 +215,8 @@ extract_and_feature() {
     # Reconstruct arrays safely via mapfile splitting on newlines
     local worker_keys=()
     local worker_values=()
-    mapfile -t worker_keys <<< "$FLAT_KEYS"
-    mapfile -t worker_values <<< "$FLAT_VALUES"
+    mapfile -t worker_keys < "$KEY_FILE"
+    mapfile -t worker_values < "$VALUE_FILE"
 
     # Fast sequential search
     local fa_gz=""
@@ -517,8 +523,8 @@ echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tst
 # Use Parallel to run the extraction
 tail -n +2 "$FILTERED_TSV" | \
 parallel --jobs "$NCORES" \
-  --env FLAT_KEYS \
-  --env FLAT_VALUES \
+  --env KEY_FILE \
+  --env VALUE_FILE \
   --env FLANKING_SEQ_LEN \
   --env XTRACTOUT \
   extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
