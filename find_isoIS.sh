@@ -94,6 +94,24 @@ fi
 
 #export GENOME_MAP
 
+# Initialize indexed arrays
+declare -a MAP_KEYS=()
+declare -a MAP_VALUES=()
+
+echo "##### Loading genome map into memory once... #####"
+while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
+    [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
+    b_pep=$(basename "$pep_file")
+    k_name="${b_pep%.pep.all.fa.gz}"
+
+    MAP_KEYS+=("$k_name")
+    MAP_VALUES+=("$dna_file")
+done < "$GENOME_MAP_FILE"
+
+# Export the arrays so GNU Parallel workers can see them
+export MAP_KEYS
+export MAP_VALUES
+
 do_parallel_blast_pep() {
     local fa=$1
     local b=${fa%.all.fa.gz}
@@ -156,18 +174,18 @@ extract_and_feature() {
     # Parallel passes the whole line as $1
     local line="$1"
 
-    # If the thread's array has not been built yet, parse the TSV into memory now
-    if [[ -z "${GENOME_MAP[*]}" ]]; then
-        echo "reading map file"
-        declare -g -A GENOME_MAP
-        while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
-            [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
-            local b_pep
-            b_pep=$(basename "$pep_file")
-            local k_name="${b_pep%.pep.all.fa.gz}"
-            GENOME_MAP["$k_name"]="$dna_file"
-        done < "$GENOME_MAP_FILE"
-    fi
+#    # If the thread's array has not been built yet, parse the TSV into memory now
+#    if [[ -z "${GENOME_MAP[*]}" ]]; then
+#        echo "reading map file"
+#        declare -g -A GENOME_MAP
+#        while IFS=$'\t' read -r pep_file dna_file || [[ -n "$pep_file" ]]; do
+#            [[ -z "$pep_file" || "$pep_file" =~ ^# ]] && continue
+#            local b_pep
+#            b_pep=$(basename "$pep_file")
+#            local k_name="${b_pep%.pep.all.fa.gz}"
+#            GENOME_MAP["$k_name"]="$dna_file"
+#        done < "$GENOME_MAP_FILE"
+#    fi
 
     # Use read to split the tab-separated line into variables
     # This must match your 24-column TSV structure exactly
@@ -183,7 +201,15 @@ extract_and_feature() {
 #    local fa_gz="${GENOME_MAP[$n]}"
 
     # Instant RAM lookup from the worker's map copy
-    local fa_gz="${GENOME_MAP[$n]}"
+    # 1. Look up DNA path from exported pre-loaded arrays
+    local fa_gz=""
+    for i in "${!MAP_KEYS[@]}"; do
+        if [[ "${MAP_KEYS[$i]}" == "$n" ]]; then
+            fa_gz="${MAP_VALUES[$i]}"
+            break
+        fi
+    done
+
     if [[ -z "$fa_gz" ]]; then
         echo "Error: Local genome path lookup failed for assembly key: $n" >&2
         return 1
@@ -479,7 +505,10 @@ echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tst
 # Use Parallel to run the extraction
 tail -n +2 "$FILTERED_TSV" | \
 parallel --jobs "$NCORES" \
-  --env GENOME_MAP_FILE \
+  --env MAP_KEYS \
+  --env MAP_VALUES \
+  --env FLANKING_SEQ_LEN \
+  --env XTRACTOUT \
   extract_and_feature {} >> "${XTRACTOUT}/tnpA_seqs.features.tsv"
 
 # gen sequence tsv for db import
