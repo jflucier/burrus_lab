@@ -287,11 +287,12 @@ do_teris_search() {
     local n=$(basename "$fa" .fasta)
     local out_file="${TERISOUT}/cmsearch/${n}_structural_hits"
 
-    # 1. Extract max_len directly from the FASTA filename string using Bash regex
-    if [[ "$n" =~ _chrlen([0-9]+) ]]; then
+    local re="_chrlen([0-9]+)"
+    if [[ "$n" =~ $re ]]; then
         local max_len="${BASH_REMATCH[1]}"
     else
-        echo "Error: Could not parse max_len from filename: $fa" >&2
+        # Log actual errors cleanly if they ever happen
+        echo "ERROR: Failed to extract chrlen from: $n" >&2
         return 1
     fi
 
