@@ -545,7 +545,7 @@ rm -f ${TERISOUT}/cmsearch/*
 
 total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
 find ${XTRACTOUT}/out/ -name "*.fasta" | \
-pv -l -s "$total_files" | \
+pv -f -l -s "$total_files" >&2 | \
 parallel --jobs ${NCORES} --progress do_teris_search {}
 
 echo -e "target_name\taccession\tquery_name\tquery_accession\tmodel_type\tmodel_from_coord\tmodel_to_coord\ttarget_from_coord\ttarget_to_coord\tstrand\ttrunc\tpass\tgc\tbias\tscore\tevalue\tinc\tmdl_len\tseq_len\tdescription" > ${TERISOUT}/all.teris.tsv
@@ -559,7 +559,7 @@ rm -f ${ORIISOUT}/cmsearch/*
 
 total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
 find ${XTRACTOUT}/out/ -name "*.fasta" | \
-pv -l -s "$total_files" | \
+pv -f -l -s "$total_files" >&2 | \
 parallel --jobs ${NCORES} --progress do_oriis_search {}
 
 echo -e "target_name\taccession\tquery_name\tquery_accession\tmodel_type\tmodel_from_coord\tmodel_to_coord\ttarget_from_coord\ttarget_to_coord\tstrand\ttrunc\tpass\tgc\tbias\tscore\tevalue\tinc\tmdl_len\tseq_len\tdescription" > ${ORIISOUT}/all.oriis.tsv
@@ -578,7 +578,7 @@ else
 
   total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
   find ${XTRACTOUT}/out/ -name "*.fasta" | \
-  pv -l -s "$total_files" | \
+  pv -f -l -s "$total_files" >&2 | \
   parallel --jobs ${NCORES} --progress do_translation {}
 
   echo -e "orf121_name\ttarget_name\tstart\tend\tlength\tsequence" > ${ORF121OUT}/all.orf121.tsv
