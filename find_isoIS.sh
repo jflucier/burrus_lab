@@ -515,7 +515,7 @@ echo "##### extracting isoform sequences from blast hits #####"
 module purge 2>/dev/null
 ml StdEnv/2020 samtools/1.17 2>/dev/null
 FILTERED_TSV=${TNPAOUT}/blast.qcov${COVERAGE}.tsv
-echo "XTRACTOUT=${XTRACTOUT}"
+#echo "XTRACTOUT=${XTRACTOUT}"
 mkdir -p ${XTRACTOUT}/out/
 find "${XTRACTOUT}/out/" -maxdepth 1 -name "*_seqs.fasta" -delete
 
@@ -546,7 +546,7 @@ rm -f ${TERISOUT}/cmsearch/*
 total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
 find ${XTRACTOUT}/out/ -name "*.fasta" | \
 pv -f -l -s "$total_files" >&2 | \
-parallel --jobs ${NCORES} --progress do_teris_search {}
+parallel --jobs ${NCORES} do_teris_search {}
 
 echo -e "target_name\taccession\tquery_name\tquery_accession\tmodel_type\tmodel_from_coord\tmodel_to_coord\ttarget_from_coord\ttarget_to_coord\tstrand\ttrunc\tpass\tgc\tbias\tscore\tevalue\tinc\tmdl_len\tseq_len\tdescription" > ${TERISOUT}/all.teris.tsv
 cat ${TERISOUT}/cmsearch/*.tsv >> ${TERISOUT}/all.teris.tsv
@@ -560,7 +560,7 @@ rm -f ${ORIISOUT}/cmsearch/*
 total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
 find ${XTRACTOUT}/out/ -name "*.fasta" | \
 pv -f -l -s "$total_files" >&2 | \
-parallel --jobs ${NCORES} --progress do_oriis_search {}
+parallel --jobs ${NCORES} do_oriis_search {}
 
 echo -e "target_name\taccession\tquery_name\tquery_accession\tmodel_type\tmodel_from_coord\tmodel_to_coord\ttarget_from_coord\ttarget_to_coord\tstrand\ttrunc\tpass\tgc\tbias\tscore\tevalue\tinc\tmdl_len\tseq_len\tdescription" > ${ORIISOUT}/all.oriis.tsv
 cat ${ORIISOUT}/cmsearch/*.tsv >> ${ORIISOUT}/all.oriis.tsv
@@ -579,7 +579,7 @@ else
   total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
   find ${XTRACTOUT}/out/ -name "*.fasta" | \
   pv -f -l -s "$total_files" >&2 | \
-  parallel --jobs ${NCORES} --progress do_translation {}
+  parallel --jobs ${NCORES} do_translation {}
 
   echo -e "orf121_name\ttarget_name\tstart\tend\tlength\tsequence" > ${ORF121OUT}/all.orf121.tsv
   cat ${ORF121OUT}/translations/*.tsv >> ${ORF121OUT}/all.orf121.tsv
