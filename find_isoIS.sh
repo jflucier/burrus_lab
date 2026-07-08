@@ -301,7 +301,7 @@ do_teris_search() {
 
     # cmsearch is the tool for searching one CM against many sequences
     #--max --toponly -Z <half_of_contig_Mb>
-    cmsearch \
+    /net/nfs-bio/fast/def-burrusvi/programs/cmfinder-0.4.1.18/bin/cmsearch \
       --cpu 1 \
       --max \
       --toponly \
@@ -350,7 +350,7 @@ do_oriis_search() {
     local half_contig_mb=$(echo "scale=6; ($max_len / 1000000) / 2" | bc)
 
     # cmsearch is the tool for searching one CM against many sequences
-    cmsearch \
+    /net/nfs-bio/fast/def-burrusvi/programs/cmfinder-0.4.1.18/bin/cmsearch \
       --cpu 1 \
       --max \
       --toponly \
