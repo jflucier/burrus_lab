@@ -498,8 +498,7 @@ else
   find "${TNPAOUT}/blast.qcov${COVERAGE}/" -type f -name "*.txt" -delete
   total_files=$(awk -F'\t' '{print $1}' "$GENOME_MAP_FILE" | wc -l)
   awk -F'\t' '{print $1}' "$GENOME_MAP_FILE" | \
-      pv -l -s "$total_files" | \
-      parallel --jobs ${NCORES} do_parallel_blast_pep {}
+  parallel --jobs ${NCORES} --progress do_parallel_blast_pep {}
 
   HEADER="filename\tqseqid\tsseqid\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tevalue\tbitscore\tslen\tgaps\tstitle\tsubject_cov\tassembly\tchr\tstart\tend\tstrand\tgene_name\tgene_desc"
   echo -e "$HEADER" > "${TNPAOUT}/blast.qcov${COVERAGE}.tsv"
@@ -523,7 +522,7 @@ find "${XTRACTOUT}/out/" -maxdepth 1 -name "*_seqs.fasta" -delete
 echo -e "filename\ttnpa_seqsig\ttnpA_hit\tassembly\tchr\tchr_len\tstart\tend\tstrand\tident\tcoverage\tgene_name\tgene_desc\trel_start\trel_end" > "${XTRACTOUT}/tnpA_seqs.features.tsv"
 # Use Parallel to run the extraction
 tail -n +2 "$FILTERED_TSV" | \
-parallel --jobs "$NCORES" \
+parallel --jobs "$NCORES" --progress \
   --env KEY_FILE \
   --env VALUE_FILE \
   --env FLANKING_SEQ_LEN \
@@ -546,7 +545,7 @@ rm -f ${TERISOUT}/cmsearch/*
 
 total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
 find ${XTRACTOUT}/out/ -name "*.fasta" | \
-parallel --jobs ${NCORES} do_teris_search {}
+parallel --jobs ${NCORES} --progress do_teris_search {}
 
 echo -e "target_name\taccession\tquery_name\tquery_accession\tmodel_type\tmodel_from_coord\tmodel_to_coord\ttarget_from_coord\ttarget_to_coord\tstrand\ttrunc\tpass\tgc\tbias\tscore\tevalue\tinc\tmdl_len\tseq_len\tdescription" > ${TERISOUT}/all.teris.tsv
 cat ${TERISOUT}/cmsearch/*.tsv >> ${TERISOUT}/all.teris.tsv
@@ -559,8 +558,7 @@ rm -f ${ORIISOUT}/cmsearch/*
 
 total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
 find ${XTRACTOUT}/out/ -name "*.fasta" | \
-pv -f -l -s "$total_files" >&2 | \
-parallel --jobs ${NCORES} --silent do_oriis_search {}
+parallel --jobs ${NCORES} --progress do_oriis_search {}
 
 echo -e "target_name\taccession\tquery_name\tquery_accession\tmodel_type\tmodel_from_coord\tmodel_to_coord\ttarget_from_coord\ttarget_to_coord\tstrand\ttrunc\tpass\tgc\tbias\tscore\tevalue\tinc\tmdl_len\tseq_len\tdescription" > ${ORIISOUT}/all.oriis.tsv
 cat ${ORIISOUT}/cmsearch/*.tsv >> ${ORIISOUT}/all.oriis.tsv
@@ -578,8 +576,7 @@ else
 
   total_files=$(find ${XTRACTOUT}/out/ -name "*.fasta" | wc -l)
   find ${XTRACTOUT}/out/ -name "*.fasta" | \
-  pv -f -l -s "$total_files" >&2 | \
-  parallel --jobs ${NCORES} --silent do_translation {}
+  parallel --jobs ${NCORES} --progress do_translation {}
 
   echo -e "orf121_name\ttarget_name\tstart\tend\tlength\tsequence" > ${ORF121OUT}/all.orf121.tsv
   cat ${ORF121OUT}/translations/*.tsv >> ${ORF121OUT}/all.orf121.tsv
