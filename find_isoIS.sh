@@ -68,7 +68,7 @@ export TERISOUT="${BASE_PATH}/terIS_search_${FLANKING_SEQ_LEN}"
 export ORIISOUT="${BASE_PATH}/oriIS_search_${FLANKING_SEQ_LEN}"
 export ORF121OUT="${BASE_PATH}/orf121_search_${FLANKING_SEQ_LEN}"
 
-mkdir -p "$TNPAOUT" "$TERISOUT" "$ORIISOUT" "$ORF121OUT"
+mkdir -p "$TNPAOUT" "$TERISOUT" "$ORIISOUT" "$ORF121OUT" "$XTRACTOUT"
 
 echo "Running with $NCORES cores at $COVERAGE% coverage."
 echo "FASTA: $TNPA_FA"
