@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=4G
 #SBATCH --time=00:30:00
+#SBATCH --partition=bio
 #SBATCH --output=logs/assign_%A_%a.out
-#SBATCH --error=logs/assign_%A_%a.err
 
 set -euo pipefail
 
