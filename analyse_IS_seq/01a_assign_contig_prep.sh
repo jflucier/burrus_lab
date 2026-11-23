@@ -14,11 +14,16 @@ BASE=/net/nfs-bio/jbod2/def-burrusvi/20261120_IS91_sequencing
 cd "$BASE"
 mkdir -p ${BASE}/analysis/db ${BASE}/analysis/blast ${BASE}/analysis/assign logs
 
-[[ -s ${BASE}/sequences/pOX38Km.fa ]] || { echo "sequences/pOX38Km.fa manquant (exporter le .dna en FASTA)" >&2; exit 1; }
+[[ -s sequences/pOX38Km.fa ]] || { echo "sequences/pOX38Km.fa manquant" >&2; exit 1; }
 
-sed 's/^>/>CHR|/'   ${BASE}/sequences/GCF_056501015.1_ASM5650101v1_genomic.fna  > ${BASE}/analysis/db/refs.fa
-sed 's/^>/>POX38|/' ${BASE}/sequences/pOX38Km.fa                                >> ${BASE}/analysis/db/refs.fa
-makeblastdb -in ${BASE}/analysis/db/refs.fa -dbtype nucl -out analysis/db/refs
+# En-têtes ASCII propres
+awk '/^>/ {print ">CHR|" substr($1,2); next} {print}' \
+    sequences/GCF_056501015.1_ASM5650101v1_genomic.fna > analysis/db/refs.fa
+awk 'BEGIN{n=0} /^>/ {n++; print ">POX38|pOX38Km_" n; next} {print}' \
+    sequences/pOX38Km.fa >> analysis/db/refs.fa
+
+rm -f analysis/db/refs.n*
+makeblastdb -in analysis/db/refs.fa -dbtype nucl -out analysis/db/refs
 
 cat > ${BASE}/analysis/assign_contigs.py << 'EOF'
 #!/usr/bin/env python3
