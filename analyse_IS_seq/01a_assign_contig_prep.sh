@@ -77,26 +77,56 @@ for l in open(fasta):
     else:
         qlen[name] += len(l.strip())
 
-iv = defaultdict(lambda: defaultdict(list))
+# hits[contig][label] = [(sid, qs, qe, ss, se, aln_len), ...]
+hits = defaultdict(lambda: defaultdict(list))
 for l in open(f"analysis/blast/{bc}.tsv"):
     f = l.rstrip().split("\t")
     if float(f[4]) < MIN_ID: continue
     qs, qe = sorted((int(f[6]), int(f[7])))
-    iv[f[0]][f[2].split("|")[0]].append((qs, qe))
+    ss, se = int(f[8]), int(f[9])
+    sid = f[2]
+    hits[f[0]][sid.split("|")[0]].append((sid, qs, qe, ss, se, int(f[5])))
+
+def aln_info(hl):
+    """Coordonnées de l'alignement sur la référence : enregistrement dominant."""
+    by_sid = defaultdict(list)
+    for h in hl: by_sid[h[0]].append(h)
+    sid = max(by_sid, key=lambda s: sum(h[5] for h in by_sid[s]))
+    hs = by_sid[sid]
+    plus  = sum(h[5] for h in hs if h[3] <= h[4])
+    total = sum(h[5] for h in hs)
+    pf = plus / total if total else 0.0
+    strand = "+" if pf >= 0.5 else "-"
+    r_start = min(min(h[3], h[4]) for h in hs)
+    r_end   = max(max(h[3], h[4]) for h in hs)
+    c_start = min(h[1] for h in hs)
+    c_end   = max(h[2] for h in hs)
+    return sid.split("|", 1)[1], r_start, r_end, strand, pf, c_start, c_end, len(hs)
 
 for q, L in qlen.items():
-    cov = {lab: (merged_len(iv[q][lab]) / L if L else 0.0) for lab in labels}
+    iv = {lab: [(h[1], h[2]) for h in hits[q][lab]] for lab in labels}
+    cov = {lab: (merged_len(iv[lab]) / L if L else 0.0) for lab in labels}
     passing = sorted(((c, lab) for lab, c in cov.items() if c >= MIN_FRAC), reverse=True)
+    best = None
     if not passing:
         a = "partiel_chimere" if any(c > 0 for c in cov.values()) else "aucun_hit"
+        if a == "partiel_chimere":
+            best = max(cov, key=cov.get)
     elif len(passing) == 1:
-        a = RENAME.get(passing[0][1], passing[0][1])
+        best = passing[0][1]; a = RENAME.get(best, best)
     else:
         top = [lab for c, lab in passing if passing[0][0] - c < TIE]
-        if len(top) == 1:
-            a = RENAME.get(top[0], top[0])
-        else:
-            a = "AMBIGU(" + "/".join(RENAME.get(t, t) for t in top) + ")"
+        best = passing[0][1]
+        a = RENAME.get(top[0], top[0]) if len(top) == 1 else \
+            "AMBIGU(" + "/".join(RENAME.get(t, t) for t in top) + ")"
+
+    if best is not None and hits[q][best]:
+        rid, rs, re_, st, pf, cs, ce, n = aln_info(hits[q][best])
+        SN = {"+": "plus", "-": "minus"}
+        extra = [RENAME.get(best, best), rid, rs, re_, SN[st], f"{pf:.2f}", cs, ce, n]
+    else:
+        extra = ["NA"] * 9
+
     covs = "\t".join(f"{cov[lab]:.2f}" for lab in labels)
-    print(f"{bc}\t{q}\t{L}\t{covs}\t{a}")
+    print(f"{bc}\t{q}\t{L}\t{covs}\t{a}\t" + "\t".join(map(str, extra)))
 EOF
