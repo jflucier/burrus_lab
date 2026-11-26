@@ -19,4 +19,4 @@ BC=$(printf "barcode%02d" "$SLURM_ARRAY_TASK_ID")
 QUERY=data/long_read/${BC}.fa
 [[ -s "$QUERY" ]] || { echo "absent: $QUERY" >&2; exit 0; }
 
-python3 analysis/find_IS91.py "$BC" "$QUERY" > analysis/is91/${BC}.tsv
+python3 /net/nfs-bio/jbod2/def-burrusvi/programs/burrus_lab/analyse_IS_seq/find_IS91.py "$BC" "$QUERY" > analysis/is91/${BC}.tsv
