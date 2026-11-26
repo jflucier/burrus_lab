@@ -6,7 +6,7 @@ import csv, sys, os
 from collections import defaultdict, Counter
 ev_f, samp_f, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
 TMAP = {"pxo38km": "pOX38Km", "ecoli_chr": "chromosome"}
-COMPLETE = {"simple", "tandem", "OET", "OET_candidate", "rearranged_junction", "other_junction"}
+COMPLETE = {"simple", "tandem", "OET", "OET_candidate", "rearranged_junction", "repeat_site", "other_junction"}
 
 samples = {}
 for r in csv.DictReader(open(samp_f, encoding="utf-8-sig"), delimiter="\t"):
@@ -30,7 +30,7 @@ for bc, s in sorted(samples.items()):
         rec.update(event_class=e["event_class"], oet=e["oet"], n_copies=e["n_copies"], strand=e["strand"],
                    contig=e["contig"], arr_start=e["arr_start"], arr_end=e["arr_end"],
                    len_vs_expected=e["len_vs_expected"], target_4nt=e["target_4nt"],
-                   array_open=e["array_open"], left_map=e["left_map"], right_map=e["right_map"], ref_gap=e["ref_gap"],
+                   array_open=e["array_open"], left_map=e["left_map"], right_map=e["right_map"], ref_gap=e["ref_gap"], ref_gap_seq=e["ref_gap_seq"],
                    on_target=e["on_target"])
     else:
         rec.update(event_class="none_detected", oet="NA", n_copies=0)
@@ -38,7 +38,7 @@ for bc, s in sorted(samples.items()):
 
 cols = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "n_events", "n_events_on_target",
         "event_class", "oet", "n_copies", "strand", "contig", "arr_start", "arr_end", "len_vs_expected", "array_open",
-        "target_4nt", "left_map", "right_map", "ref_gap", "on_target"]
+        "target_4nt", "left_map", "right_map", "ref_gap", "ref_gap_seq", "on_target"]
 with open(os.path.join(outdir, "IS91_per_clone.tsv"), "w") as fh:
     fh.write("\t".join(cols) + "\n")
     for r in clones: fh.write("\t".join(str(r.get(c, "NA")) for c in cols) + "\n")

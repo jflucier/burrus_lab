@@ -18,7 +18,8 @@ EXPECTED = {"pCP7": 945, "pCP54": 1988, "pCP55": 1988}   # ter(début) -> ori(fi
 TARGET_MAP = {"pxo38km": "pOX38Km", "pox38km": "pOX38Km", "ecoli_chr": "chromosome"}
 SEED, SEEDF = 20, 24
 MIN_COV, MIN_ID = 0.80, 0.88
-MAX_SPAN, TANDEM_GAP, JUNC_GAP, FLANK = 20000, 40, 20, 150
+MAX_SPAN, TANDEM_GAP, JUNC_GAP = 20000, 40, 20
+FLANK = int(os.environ.get("IS91_FLANK", "1000"))   # flancs plus longs = meilleure résolution des répétitions
 SN = {"+": "plus", "-": "minus"}
 COMP = str.maketrans("ACGTNacgtn", "TGCANtgcan")
 def rc(s): return s.translate(COMP)[::-1]
@@ -27,7 +28,7 @@ COLS = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "cont
         "assignation", "on_target", "event_class", "oet", "array_id", "copy_index", "n_copies", "strand",
         "ins_start", "ins_end", "ter_start", "ter_end", "ori_start", "ori_end", "ter_to_ori_len",
         "expected_len", "len_vs_expected", "inner_len", "arr_start", "arr_end", "target_4nt", "ori_tail4",
-        "left_class", "left_map", "right_class", "right_map", "ref_gap", "ins_strand_on_ref", "array_open",
+        "left_class", "left_map", "right_class", "right_map", "ref_gap", "ref_gap_seq", "ins_strand_on_ref", "array_open",
         "upstream_10nt", "downstream_10nt", "inner_seq"]
 if len(sys.argv) > 1 and sys.argv[1] == "--header":
     print("\t".join(COLS)); sys.exit()
@@ -109,23 +110,27 @@ def map_flank(seq, side):
                 while i != -1 and c < 20:
                     orig = o if strand == "+" else n - o - SEEDF
                     groups[(key, strand)].append((i - o, orig)); c += 1; i = fw.find(sd, i + 1)
-    best = None
+    allc = []
     for (key, strand), lst in groups.items():
         lst.sort(); cl = [lst[0:1]]
         for x in lst[1:]:
             if x[0] - cl[-1][-1][0] <= 6: cl[-1].append(x)
             else: cl.append([x])
         for c in cl:
-            if best is None or len(c) > len(best[2]): best = (key, strand, c)
-    if best is None or len(best[2]) < 2: return None
-    key, strand, c = best
+            bonus = 3 if key.split("|")[0] == EXPLAB else 0      # préférence pour le réplicon cible attendu
+            allc.append((len(c) + bonus, len(c), key, strand, c))
+    if not allc: return None
+    allc.sort(key=lambda x: -x[0])
+    _, nbest, key, strand, c = allc[0]
+    if nbest < 2: return None
+    nloci = sum(1 for x in allc if x[1] >= 0.8 * nbest)           # >1 : séquence répétée, position ambiguë
     diag, _ = (max(c, key=lambda x: x[1]) if side == "L" else min(c, key=lambda x: x[1]))
     if strand == "+": pos = n + diag if side == "L" else diag + 1
     else:             pos = diag + 1 if side == "L" else n + diag
     lab, name = key.split("|", 1)
-    return dict(label=lab, ref=name, strand=strand, pos=pos, nseeds=len(c))
+    return dict(label=lab, ref=name, strand=strand, pos=pos, nseeds=len(c), nloci=nloci)
 
-def fmt_map(m): return "NA" if not m else f"{m['label']}:{m['ref']}:{m['pos']}({m['strand']},{m['nseeds']}s)"
+def fmt_map(m): return "NA" if not m else f"{m['label']}:{m['ref']}:{m['pos']}({m['strand']},{m['nseeds']}s,{m['nloci']}loci)"
 def fl_class(m, flank):
     if len(flank) < 30: return "edge"
     if not m: return "unmapped"
@@ -145,6 +150,7 @@ if os.path.exists(ap):
     for r in csv.DictReader(open(ap, encoding="utf-8-sig"), delimiter="\t"):
         if r["barcode"] == bc: assign[r["contig"]] = r["assignation"]
 expected = EXPECTED.get(is_type, "NA")
+EXPLAB = {"pOX38Km": "POX38", "chromosome": "CHR"}.get(exp_t)
 
 ORI = list(read_fasta(os.path.join(SEQDIR, "ori.fa")).values())[0]
 TER = list(read_fasta(os.path.join(SEQDIR, "ter.fa")).values())[0]
@@ -207,6 +213,10 @@ for cname, seq in contigs.items():
         lm, rm = map_flank(Lf, "L"), map_flank(Rf, "R")
         lc, rc_ = fl_class(lm, Lf), fl_class(rm, Rf)
         span = a_hi - a_lo; n = len(arr)
+        ml = (lm or rm or {}).get("label")
+        if ml in TARGETS: on_a = "yes" if ml == EXPLAB else "no"       # d'après la position cartographiée
+        else: on_a = on
+        b = base[:9] + [on_a]
         opens = []
         for u2 in units:
             if u2["strand"] != st or u2["type"] not in ("ter_only", "ori_only"): continue
@@ -218,9 +228,13 @@ for cname, seq in contigs.items():
                 g = (arr[0]["ter"]["lo"] - h2["hi"]) if st == "+" else (h2["lo"] - arr[0]["ter"]["hi"])
                 if -10 <= g <= TANDEM_GAP: opens.append("ori_before_ter")
         aopen = ",".join(sorted(set(opens))) or "no"
-        ref_gap, ins_ref = "NA", "NA"
+        ref_gap, ins_ref, gseq = "NA", "NA", "NA"
         if lm and rm and lm["ref"] == rm["ref"] and lm["strand"] == rm["strand"]:
             ref_gap = (rm["pos"] - lm["pos"] - 1) if lm["strand"] == "+" else (lm["pos"] - rm["pos"] - 1)
+            if 0 < ref_gap <= 6:
+                fw = REFSEQ[lm["label"] + "|" + lm["ref"]]
+                gseq = fw[lm["pos"]:rm["pos"] - 1] if lm["strand"] == "+" else rc(fw[rm["pos"]:lm["pos"] - 1])
+        amb = bool((lm and lm["nloci"] > 1) or (rm and rm["nloci"] > 1))
         hm = lm or rm
         if hm: ins_ref = SN[hm["strand"]]
         extra = span - n * expected if isinstance(expected, int) else None
@@ -231,7 +245,8 @@ for cname, seq in contigs.items():
         elif oet == "yes": ecl = "OET"
         elif oet == "maybe": ecl = "OET_candidate"
         elif lc == "target" and rc_ == "target":
-            ecl = "simple" if ref_gap != "NA" and abs(ref_gap) <= 6 else "rearranged_junction"
+            if ref_gap != "NA" and abs(ref_gap) <= 6: ecl = "simple"
+            else: ecl = "repeat_site" if amb else "rearranged_junction"
         else: ecl = "other_junction"
         ordered = arr
         for ci, u in enumerate(ordered, 1):
@@ -243,10 +258,10 @@ for cname, seq in contigs.items():
                 s_, e_ = o["lo"] + 1, t["hi"]; inner = rc(seq[o["e"]:t["s"] - 1]); tail = rc(seq[o["lo"]:o["lo"] + 4])
                 up, dn = rc(seq[e_:e_ + 10]), rc(seq[max(0, s_ - 11):s_ - 1])
             ln = e_ - s_ + 1
-            rows.append(base + [ecl, oet, ai, ci, n, SN[st], s_, e_, t["s"], t["e"], o["s"], o["e"], ln,
+            rows.append(b + [ecl, oet, ai, ci, n, SN[st], s_, e_, t["s"], t["e"], o["s"], o["e"], ln,
                                 expected, (ln - expected) if isinstance(expected, int) else "NA", len(inner),
                                 a_lo + 1, a_hi, rc(tail), tail, lc, fmt_map(lm), rc_, fmt_map(rm), ref_gap,
-                                ins_ref, aopen, up, dn, inner])
+                                gseq, ins_ref, aopen, up, dn, inner])
     for u in units:
         if u["type"] == "complete": continue
         h = u["ter"] or u["ori"]
@@ -255,7 +270,7 @@ for cname, seq in contigs.items():
                             min(x["s"] for x in (t, o) if x), max(x["e"] for x in (t, o) if x),
                             t["s"] if t else "NA", t["e"] if t else "NA", o["s"] if o else "NA", o["e"] if o else "NA",
                             "NA", expected, "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA",
-                            "NA", "NA", "NA", "NA", "NA"])
+                            "NA", "NA", "NA", "NA", "NA", "NA"])
 
 def sk(r):
     v = r[16]; return (r[6], int(v) if str(v).isdigit() else 0)

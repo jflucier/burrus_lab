@@ -11,5 +11,5 @@ set -euo pipefail
 module load python/3
 cd /net/nfs-bio/jbod2/def-burrusvi/20261120_IS91_sequencing
 
-{ python3 analysis/find_IS91.py --header; cat analysis/is91/barcode*.tsv; } > analysis/IS91_insertions.tsv
-python3 analysis/summarize_IS91.py analysis/IS91_insertions.tsv analysis/samples.tsv analysis/
+{ python3 /net/nfs-bio/jbod2/def-burrusvi/programs/burrus_lab/analyse_IS_seq/find_IS91.py --header; cat analysis/is91/barcode*.tsv; } > analysis/IS91_insertions.tsv
+python3 /net/nfs-bio/jbod2/def-burrusvi/programs/burrus_lab/analyse_IS_seq/summarize_IS91.py analysis/IS91_insertions.tsv analysis/samples.tsv analysis/
