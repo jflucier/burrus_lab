@@ -6,7 +6,7 @@ import csv, sys, os
 from collections import defaultdict, Counter
 ev_f, samp_f, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
 TMAP = {"pxo38km": "pOX38Km", "ecoli_chr": "chromosome"}
-COMPLETE = {"simple", "tandem", "OET", "OET_candidate", "rearranged_junction", "repeat_site", "other_junction"}
+COMPLETE = {"simple", "tandem", "OET", "OET_candidate", "rearranged_junction", "repeat_site", "ori_side_donor", "donor_both_sides", "other_junction"}
 
 samples = {}
 for r in csv.DictReader(open(samp_f, encoding="utf-8-sig"), delimiter="\t"):

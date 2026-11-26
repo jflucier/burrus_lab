@@ -128,6 +128,7 @@ def map_flank(seq, side):
     if strand == "+": pos = n + diag if side == "L" else diag + 1
     else:             pos = diag + 1 if side == "L" else n + diag
     lab, name = key.split("|", 1)
+    pos = (pos - 1) % len(REFSEQ[key]) + 1                         # références circulaires
     return dict(label=lab, ref=name, strand=strand, pos=pos, nseeds=len(c), nloci=nloci)
 
 def fmt_map(m): return "NA" if not m else f"{m['label']}:{m['ref']}:{m['pos']}({m['strand']},{m['nseeds']}s,{m['nloci']}loci)"
@@ -230,10 +231,13 @@ for cname, seq in contigs.items():
         aopen = ",".join(sorted(set(opens))) or "no"
         ref_gap, ins_ref, gseq = "NA", "NA", "NA"
         if lm and rm and lm["ref"] == rm["ref"] and lm["strand"] == rm["strand"]:
+            fw = REFSEQ[lm["label"] + "|" + lm["ref"]]; RL = len(fw)
             ref_gap = (rm["pos"] - lm["pos"] - 1) if lm["strand"] == "+" else (lm["pos"] - rm["pos"] - 1)
+            ref_gap = (ref_gap + RL // 2) % RL - RL // 2                # distance circulaire signée
             if 0 < ref_gap <= 6:
-                fw = REFSEQ[lm["label"] + "|" + lm["ref"]]
-                gseq = fw[lm["pos"]:rm["pos"] - 1] if lm["strand"] == "+" else rc(fw[rm["pos"]:lm["pos"] - 1])
+                ext = fw + fw
+                gseq = ext[lm["pos"]:lm["pos"] + ref_gap] if lm["strand"] == "+" else \
+                       rc(ext[RL + lm["pos"] - 1 - ref_gap:RL + lm["pos"] - 1])
         amb = bool((lm and lm["nloci"] > 1) or (rm and rm["nloci"] > 1))
         hm = lm or rm
         if hm: ins_ref = SN[hm["strand"]]
@@ -242,8 +246,9 @@ for cname, seq in contigs.items():
         elif lc in ("unmapped", "edge") and extra is not None and extra > 100: oet = "maybe"
         else: oet = "no"
         if n > 1: ecl = "tandem"
-        elif oet == "yes": ecl = "OET"
+        elif oet == "yes": ecl = "donor_both_sides" if rc_ == "donor" else "OET"
         elif oet == "maybe": ecl = "OET_candidate"
+        elif lc == "target" and rc_ == "donor": ecl = "ori_side_donor"
         elif lc == "target" and rc_ == "target":
             if ref_gap != "NA" and abs(ref_gap) <= 6: ecl = "simple"
             else: ecl = "repeat_site" if amb else "rearranged_junction"
