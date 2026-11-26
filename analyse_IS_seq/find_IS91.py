@@ -14,7 +14,7 @@ ANA = os.environ.get("IS91_ANALYSIS", "analysis")
 REF_FILES = [("CHR", "GCF_056501015.1_ASM5650101v1_genomic.fna"), ("POX38", "pOX38Km.fa"),
              ("pCP54", "pCP54.fa"), ("pCP55", "pCP55.fa"), ("pCP7", "pCP7.fa")]
 TARGETS, DONORS = {"CHR", "POX38"}, {"pCP54", "pCP55", "pCP7"}
-EXPECTED = {"pCP7": 945, "pCP54": 1984, "pCP55": 1984}   # ter(début) -> ori(fin) attendu
+EXPECTED = {"pCP7": 945, "pCP54": 1988, "pCP55": 1988}   # ter(début) -> ori(fin) attendu (ori recouvre ter de 4 nt dans pCP54/55)
 TARGET_MAP = {"pxo38km": "pOX38Km", "pox38km": "pOX38Km", "ecoli_chr": "chromosome"}
 SEED, SEEDF = 20, 24
 MIN_COV, MIN_ID = 0.80, 0.88
@@ -27,7 +27,7 @@ COLS = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "cont
         "assignation", "on_target", "event_class", "oet", "array_id", "copy_index", "n_copies", "strand",
         "ins_start", "ins_end", "ter_start", "ter_end", "ori_start", "ori_end", "ter_to_ori_len",
         "expected_len", "len_vs_expected", "inner_len", "arr_start", "arr_end", "target_4nt", "ori_tail4",
-        "left_class", "left_map", "right_class", "right_map", "ref_gap", "ins_strand_on_ref",
+        "left_class", "left_map", "right_class", "right_map", "ref_gap", "ins_strand_on_ref", "array_open",
         "upstream_10nt", "downstream_10nt", "inner_seq"]
 if len(sys.argv) > 1 and sys.argv[1] == "--header":
     print("\t".join(COLS)); sys.exit()
@@ -207,6 +207,17 @@ for cname, seq in contigs.items():
         lm, rm = map_flank(Lf, "L"), map_flank(Rf, "R")
         lc, rc_ = fl_class(lm, Lf), fl_class(rm, Rf)
         span = a_hi - a_lo; n = len(arr)
+        opens = []
+        for u2 in units:
+            if u2["strand"] != st or u2["type"] not in ("ter_only", "ori_only"): continue
+            h2 = u2["ter"] or u2["ori"]
+            if u2["type"] == "ter_only":     # copie partielle après le dernier ori
+                g = (h2["lo"] - arr[-1]["ori"]["hi"]) if st == "+" else (arr[-1]["ori"]["lo"] - h2["hi"])
+                if -10 <= g <= TANDEM_GAP: opens.append("ter_after_ori")
+            else:                            # ori orphelin avant le premier ter
+                g = (arr[0]["ter"]["lo"] - h2["hi"]) if st == "+" else (h2["lo"] - arr[0]["ter"]["hi"])
+                if -10 <= g <= TANDEM_GAP: opens.append("ori_before_ter")
+        aopen = ",".join(sorted(set(opens))) or "no"
         ref_gap, ins_ref = "NA", "NA"
         if lm and rm and lm["ref"] == rm["ref"] and lm["strand"] == rm["strand"]:
             ref_gap = (rm["pos"] - lm["pos"] - 1) if lm["strand"] == "+" else (lm["pos"] - rm["pos"] - 1)
@@ -235,7 +246,7 @@ for cname, seq in contigs.items():
             rows.append(base + [ecl, oet, ai, ci, n, SN[st], s_, e_, t["s"], t["e"], o["s"], o["e"], ln,
                                 expected, (ln - expected) if isinstance(expected, int) else "NA", len(inner),
                                 a_lo + 1, a_hi, rc(tail), tail, lc, fmt_map(lm), rc_, fmt_map(rm), ref_gap,
-                                ins_ref, up, dn, inner])
+                                ins_ref, aopen, up, dn, inner])
     for u in units:
         if u["type"] == "complete": continue
         h = u["ter"] or u["ori"]
@@ -244,7 +255,7 @@ for cname, seq in contigs.items():
                             min(x["s"] for x in (t, o) if x), max(x["e"] for x in (t, o) if x),
                             t["s"] if t else "NA", t["e"] if t else "NA", o["s"] if o else "NA", o["e"] if o else "NA",
                             "NA", expected, "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA",
-                            "NA", "NA", "NA", "NA"])
+                            "NA", "NA", "NA", "NA", "NA"])
 
 def sk(r):
     v = r[16]; return (r[6], int(v) if str(v).isdigit() else 0)

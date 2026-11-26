@@ -30,14 +30,14 @@ for bc, s in sorted(samples.items()):
         rec.update(event_class=e["event_class"], oet=e["oet"], n_copies=e["n_copies"], strand=e["strand"],
                    contig=e["contig"], arr_start=e["arr_start"], arr_end=e["arr_end"],
                    len_vs_expected=e["len_vs_expected"], target_4nt=e["target_4nt"],
-                   left_map=e["left_map"], right_map=e["right_map"], ref_gap=e["ref_gap"],
+                   array_open=e["array_open"], left_map=e["left_map"], right_map=e["right_map"], ref_gap=e["ref_gap"],
                    on_target=e["on_target"])
     else:
         rec.update(event_class="none_detected", oet="NA", n_copies=0)
     clones.append(rec)
 
 cols = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "n_events", "n_events_on_target",
-        "event_class", "oet", "n_copies", "strand", "contig", "arr_start", "arr_end", "len_vs_expected",
+        "event_class", "oet", "n_copies", "strand", "contig", "arr_start", "arr_end", "len_vs_expected", "array_open",
         "target_4nt", "left_map", "right_map", "ref_gap", "on_target"]
 with open(os.path.join(outdir, "IS91_per_clone.tsv"), "w") as fh:
     fh.write("\t".join(cols) + "\n")
