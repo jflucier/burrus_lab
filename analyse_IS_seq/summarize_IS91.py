@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""summarize_IS91.py -- table par clone + fréquences par type d'IS / passage.
+Usage: summarize_IS91.py analysis/IS91_insertions.tsv analysis/samples.tsv analysis/
+Écrit: IS91_per_clone.tsv, IS91_freq_by_passage.tsv, IS91_freq_by_rep.tsv"""
+import csv, sys, os
+from collections import defaultdict, Counter
+ev_f, samp_f, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
+TMAP = {"pxo38km": "pOX38Km", "ecoli_chr": "chromosome"}
+COMPLETE = {"simple", "tandem", "OET", "OET_candidate", "rearranged_junction", "other_junction"}
+
+samples = {}
+for r in csv.DictReader(open(samp_f, encoding="utf-8-sig"), delimiter="\t"):
+    samples[r["sample"].strip()] = r
+events = defaultdict(list)
+for r in csv.DictReader(open(ev_f), delimiter="\t"):
+    if r["event_class"] in COMPLETE and r["copy_index"] == "1":      # une ligne par événement (réseau)
+        events[r["barcode"]].append(r)
+
+clones = []
+for bc, s in sorted(samples.items()):
+    tgt = TMAP.get(s["cible_IS"].lower(), s["cible_IS"])
+    ev = events.get(bc, [])
+    on = [e for e in ev if e["on_target"] == "yes"] or ev        # priorité aux événements sur la cible attendue
+    on.sort(key=lambda e: -int(e["n_copies"]))
+    e = on[0] if on else None
+    rec = dict(barcode=bc, is_type=s["type_IS"], exp_target=tgt, passage=s["passage"],
+               bio_rep=s["N_biol"], clone=s["clone"], n_events=len(ev),
+               n_events_on_target=sum(x["on_target"] == "yes" for x in ev))
+    if e:
+        rec.update(event_class=e["event_class"], oet=e["oet"], n_copies=e["n_copies"], strand=e["strand"],
+                   contig=e["contig"], arr_start=e["arr_start"], arr_end=e["arr_end"],
+                   len_vs_expected=e["len_vs_expected"], target_4nt=e["target_4nt"],
+                   left_map=e["left_map"], right_map=e["right_map"], ref_gap=e["ref_gap"],
+                   on_target=e["on_target"])
+    else:
+        rec.update(event_class="none_detected", oet="NA", n_copies=0)
+    clones.append(rec)
+
+cols = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "n_events", "n_events_on_target",
+        "event_class", "oet", "n_copies", "strand", "contig", "arr_start", "arr_end", "len_vs_expected",
+        "target_4nt", "left_map", "right_map", "ref_gap", "on_target"]
+with open(os.path.join(outdir, "IS91_per_clone.tsv"), "w") as fh:
+    fh.write("\t".join(cols) + "\n")
+    for r in clones: fh.write("\t".join(str(r.get(c, "NA")) for c in cols) + "\n")
+
+def freq(keys, fn):
+    g = defaultdict(list)
+    for r in clones: g[tuple(r[k] for k in keys)].append(r)
+    with open(os.path.join(outdir, fn), "w") as fh:
+        fh.write("\t".join(keys + ["n_clones", "n_none", "n_simple", "n_OET", "n_OET_candidate", "n_tandem",
+                                   "n_other", "pct_OET", "pct_tandem", "mean_copies_if_insertion"]) + "\n")
+        for k, rs in sorted(g.items()):
+            n = len(rs); cl = Counter(r["event_class"] for r in rs)
+            ins = [r for r in rs if r["event_class"] != "none_detected"]
+            tand = sum(int(r["n_copies"]) > 1 for r in ins)
+            oet = sum(r["oet"] == "yes" for r in ins)
+            mc = sum(int(r["n_copies"]) for r in ins) / len(ins) if ins else 0
+            other = len(ins) - cl["simple"] - cl["OET"] - cl["OET_candidate"] - cl["tandem"]
+            fh.write("\t".join(list(k) + [str(x) for x in (n, cl["none_detected"], cl["simple"], cl["OET"],
+                     cl["OET_candidate"], cl["tandem"], other)] +
+                     [f"{100*oet/n:.1f}", f"{100*tand/n:.1f}", f"{mc:.2f}"]) + "\n")
+freq(["is_type", "exp_target", "passage"], "IS91_freq_by_passage.tsv")
+freq(["is_type", "exp_target", "passage", "bio_rep"], "IS91_freq_by_rep.tsv")

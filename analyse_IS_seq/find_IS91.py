@@ -1,182 +1,252 @@
 #!/usr/bin/env python3
-import sys, csv, os, subprocess, tempfile
+"""find_IS91.py v2 -- localise les insertions IS91 (ter ... ori) dans les contigs d'un barcode.
+Python seul (pas de BLAST). Usage:
+    find_IS91.py --header
+    find_IS91.py BARCODE contigs.fa  > analysis/is91/BARCODE.tsv
+Lit analysis/samples.tsv et analysis/contig_assignment_meta.tsv (variable IS91_ANALYSIS pour changer le dossier).
+Conventions: tout est exprimé dans le sens de l'IS (ter -> ori). strand 'plus' = ter->ori vers les
+coordonnées croissantes du contig. Coordonnées 1-based incluses."""
+import sys, os, csv
 from collections import defaultdict
 
-COLS = ["barcode","contig","contig_len","contig_assignation","is_type","exp_target","on_target","event_type",
-        "array_id","copy_index","n_copies","strand","ins_start","ins_end",
-        "ter_start","ter_end","ori_start","ori_end","ori_to_ter_len","inner_len",
-        "arr_start","arr_end","upstream_10nt","downstream_10nt","target_4nt",
-        "ref_left","ref_right","ins_strand_on_ref","inner_seq"]
-
-if len(sys.argv) > 1 and sys.argv[1] == "--header":
-    print("\t".join(COLS)); sys.exit()
-
-bc, fasta = sys.argv[1], sys.argv[2]
-ORI, TER = "sequences/ori.fa", "sequences/ter.fa"
-REFDB = "analysis/db/refs"
-MIN_ID, MIN_COV = 90.0, 0.80
-MAX_SPAN = 20000     # ter->ori max pour former une paire
-TANDEM_GAP = 50      # écart max entre copies adjacentes
-FLANK, SHORT = 150, 10
+SEQDIR = os.environ.get("IS91_SEQDIR", "sequences")
+ANA = os.environ.get("IS91_ANALYSIS", "analysis")
+REF_FILES = [("CHR", "GCF_056501015.1_ASM5650101v1_genomic.fna"), ("POX38", "pOX38Km.fa"),
+             ("pCP54", "pCP54.fa"), ("pCP55", "pCP55.fa"), ("pCP7", "pCP7.fa")]
+TARGETS, DONORS = {"CHR", "POX38"}, {"pCP54", "pCP55", "pCP7"}
+EXPECTED = {"pCP7": 945, "pCP54": 1984, "pCP55": 1984}   # ter(début) -> ori(fin) attendu
+TARGET_MAP = {"pxo38km": "pOX38Km", "pox38km": "pOX38Km", "ecoli_chr": "chromosome"}
+SEED, SEEDF = 20, 24
+MIN_COV, MIN_ID = 0.80, 0.88
+MAX_SPAN, TANDEM_GAP, JUNC_GAP, FLANK = 20000, 40, 20, 150
+SN = {"+": "plus", "-": "minus"}
 COMP = str.maketrans("ACGTNacgtn", "TGCANtgcan")
 def rc(s): return s.translate(COMP)[::-1]
+
+COLS = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "contig", "contig_len",
+        "assignation", "on_target", "event_class", "oet", "array_id", "copy_index", "n_copies", "strand",
+        "ins_start", "ins_end", "ter_start", "ter_end", "ori_start", "ori_end", "ter_to_ori_len",
+        "expected_len", "len_vs_expected", "inner_len", "arr_start", "arr_end", "target_4nt", "ori_tail4",
+        "left_class", "left_map", "right_class", "right_map", "ref_gap", "ins_strand_on_ref",
+        "upstream_10nt", "downstream_10nt", "inner_seq"]
+if len(sys.argv) > 1 and sys.argv[1] == "--header":
+    print("\t".join(COLS)); sys.exit()
 
 def read_fasta(p):
     d, n = {}, None
     for l in open(p):
         l = l.strip()
         if l.startswith(">"): n = l[1:].split()[0]; d[n] = []
-        elif n: d[n].append(l)
+        elif n is not None: d[n].append(l)
     return {k: "".join(v).upper() for k, v in d.items()}
 
-meta = {}
-if os.path.exists("analysis/contig_assignment.tsv"):
-    for r in csv.DictReader(open("analysis/contig_assignment.tsv"), delimiter="\t"):
-        meta[(r["barcode"], r["contig"])] = (r["assignation"],
-            r.get("Type_IS", "NA"), r.get("Cible_IS", "NA"))
+def sw(q, t, match=2, mis=-3, gap=-4):
+    n, m = len(q), len(t)
+    H = [[0] * (m + 1) for _ in range(n + 1)]
+    best = (0, 0, 0)
+    for i in range(1, n + 1):
+        qi, Hi, Hp = q[i - 1], H[i], H[i - 1]
+        for j in range(1, m + 1):
+            v = max(0, Hp[j - 1] + (match if qi == t[j - 1] else mis), Hp[j] + gap, Hi[j - 1] + gap)
+            Hi[j] = v
+            if v > best[0]: best = (v, i, j)
+    sc, i, j = best
+    qe, te, mt, al = i, j, 0, 0
+    while i > 0 and j > 0 and H[i][j] > 0:
+        v = H[i][j]
+        if v == H[i - 1][j - 1] + (match if q[i - 1] == t[j - 1] else mis):
+            mt += q[i - 1] == t[j - 1]; i -= 1; j -= 1
+        elif v == H[i - 1][j] + gap: i -= 1
+        else: j -= 1
+        al += 1
+    return sc, i, qe, j, te, mt, al      # qs, qe (0-based, qe exclusif), ts, te (exclusif)
 
-seqs = read_fasta(fasta)
-ori = list(read_fasta(ORI).values())[0]
-ter = list(read_fasta(TER).values())[0]
-tmp = tempfile.mkdtemp()
-qf = f"{tmp}/q.fa"
-open(qf, "w").write(f">ORI\n{ori}\n>TER\n{ter}\n")
-
-FMT = "6 qseqid qlen sseqid slen pident length qstart qend sstart send evalue bitscore"
-out = subprocess.run(["blastn", "-task", "blastn-short", "-query", qf, "-subject", fasta,
-                      "-outfmt", FMT, "-evalue", "1e-5", "-dust", "no"],
-                     capture_output=True, text=True, check=True).stdout
-
-cand = []
-for l in out.splitlines():
-    f = l.split("\t")
-    qlen, pid, aln = int(f[1]), float(f[4]), int(f[5])
-    s, e = int(f[8]), int(f[9])
-    if pid < MIN_ID or aln / qlen < MIN_COV: continue
-    cand.append(dict(kind=f[0], contig=f[2], s=min(s, e), e=max(s, e),
-                     strand="+" if s <= e else "-", bit=float(f[11])))
-cand.sort(key=lambda h: -h["bit"])
-kept = []   # déduplication (les palindromes d'ori peuvent donner un hit sur l'autre brin)
-for h in cand:
-    if any(k["kind"] == h["kind"] and k["contig"] == h["contig"] and
-           min(k["e"], h["e"]) - max(k["s"], h["s"]) + 1 > 0.5 * (h["e"] - h["s"] + 1)
-           for k in kept): continue
-    kept.append(h)
-
-by = defaultdict(list)
-for h in kept: by[h["contig"]].append(h)
-
-# --- appariement ter -> ori dans le sens de l'IS ---
-units = []
-for contig, hs in by.items():
+def find_hits(seq, q, kind):
+    L, out = len(q), []
     for strand in "+-":
-        ev = [h for h in hs if h["strand"] == strand]
-        ev.sort(key=(lambda h: h["s"]) if strand == "+" else (lambda h: -h["e"]))
-        def orphan(h):
-            units.append(dict(contig=contig, strand=strand, type=h["kind"].lower() + "_only",
-                              ter=h if h["kind"] == "TER" else None,
-                              ori=h if h["kind"] == "ORI" else None, s=h["s"], e=h["e"]))
-        pend = None
+        qs = q if strand == "+" else rc(q)
+        diags = set()
+        for o in range(0, L - SEED + 1, 8):
+            sd = qs[o:o + SEED]; i = seq.find(sd); c = 0
+            while i != -1 and c < 200:
+                diags.add(i - o); c += 1; i = seq.find(sd, i + 1)
+        reps = []
+        for d in sorted(diags):
+            if not reps or d - reps[-1] > 8: reps.append(d)
+        for d in reps:
+            ws, we = max(0, d - 20), min(len(seq), d + L + 20)
+            sc, q0, q1, t0, t1, mt, al = sw(qs, seq[ws:we])
+            if al == 0 or (q1 - q0) / L < MIN_COV or mt / al < MIN_ID: continue
+            ts, te = ws + t0, ws + t1                 # 0-based, te exclusif
+            if strand == "+": lo, hi = ts - q0, te + (L - q1)    # étendue de la requête entière
+            else:             lo, hi = ts - (L - q1), te + q0
+            out.append(dict(kind=kind, strand=strand, s=ts + 1, e=te, score=sc, lo=max(0, lo),
+                            hi=min(len(seq), hi), ident=mt / al, L=L, q0=q0, q1=q1, ts=ts, te=te))
+    out.sort(key=lambda h: -h["score"]); kept = []
+    for h in out:
+        if any(k["kind"] == h["kind"] and min(k["e"], h["e"]) - max(k["s"], h["s"]) + 1 > 0.5 * (h["e"] - h["s"] + 1)
+               for k in kept): continue
+        kept.append(h)
+    return kept
+
+# ---------- références ----------
+REFSEQ = {}
+for lab, fn in REF_FILES:
+    p = os.path.join(SEQDIR, fn)
+    if os.path.exists(p):
+        for name, s in read_fasta(p).items(): REFSEQ[f"{lab}|{name}"] = s
+
+def map_flank(seq, side):
+    n = len(seq)
+    if n < 30: return None
+    groups = defaultdict(list)
+    for strand in "+-":
+        qs = seq if strand == "+" else rc(seq)
+        for o in range(0, n - SEEDF + 1, 6):
+            sd = qs[o:o + SEEDF]
+            for key, fw in REFSEQ.items():
+                i = fw.find(sd); c = 0
+                while i != -1 and c < 20:
+                    orig = o if strand == "+" else n - o - SEEDF
+                    groups[(key, strand)].append((i - o, orig)); c += 1; i = fw.find(sd, i + 1)
+    best = None
+    for (key, strand), lst in groups.items():
+        lst.sort(); cl = [lst[0:1]]
+        for x in lst[1:]:
+            if x[0] - cl[-1][-1][0] <= 6: cl[-1].append(x)
+            else: cl.append([x])
+        for c in cl:
+            if best is None or len(c) > len(best[2]): best = (key, strand, c)
+    if best is None or len(best[2]) < 2: return None
+    key, strand, c = best
+    diag, _ = (max(c, key=lambda x: x[1]) if side == "L" else min(c, key=lambda x: x[1]))
+    if strand == "+": pos = n + diag if side == "L" else diag + 1
+    else:             pos = diag + 1 if side == "L" else n + diag
+    lab, name = key.split("|", 1)
+    return dict(label=lab, ref=name, strand=strand, pos=pos, nseeds=len(c))
+
+def fmt_map(m): return "NA" if not m else f"{m['label']}:{m['ref']}:{m['pos']}({m['strand']},{m['nseeds']}s)"
+def fl_class(m, flank):
+    if len(flank) < 30: return "edge"
+    if not m: return "unmapped"
+    return "target" if m["label"] in TARGETS else ("donor" if m["label"] in DONORS else "other")
+
+# ---------- métadonnées ----------
+bc, fasta = sys.argv[1], sys.argv[2]
+sp = os.path.join(ANA, "samples.tsv"); meta = {}
+if os.path.exists(sp):
+    for r in csv.DictReader(open(sp, encoding="utf-8-sig"), delimiter="\t"):
+        if r["sample"].strip() == bc: meta = r
+is_type = meta.get("type_IS", "NA"); exp_t = TARGET_MAP.get(meta.get("cible_IS", "").lower(), meta.get("cible_IS", "NA"))
+passage, brep, clone = meta.get("passage", "NA"), meta.get("N_biol", "NA"), meta.get("clone", "NA")
+assign = {}
+ap = os.path.join(ANA, "contig_assignment_meta.tsv")
+if os.path.exists(ap):
+    for r in csv.DictReader(open(ap, encoding="utf-8-sig"), delimiter="\t"):
+        if r["barcode"] == bc: assign[r["contig"]] = r["assignation"]
+expected = EXPECTED.get(is_type, "NA")
+
+ORI = list(read_fasta(os.path.join(SEQDIR, "ori.fa")).values())[0]
+TER = list(read_fasta(os.path.join(SEQDIR, "ter.fa")).values())[0]
+contigs = read_fasta(fasta)
+rows = []
+
+for cname, seq in contigs.items():
+    hits = find_hits(seq, ORI, "ORI") + find_hits(seq, TER, "TER")
+    if not hits: continue
+    units = []   # dict(type, strand, ter, ori)
+    for strand in "+-":
+        ev = sorted([h for h in hits if h["strand"] == strand],
+                    key=(lambda h: h["s"]) if strand == "+" else (lambda h: -h["e"]))
+        pend, orphans = None, []
         for h in ev:
             if h["kind"] == "TER":
-                if pend: orphan(pend)
+                if pend: orphans.append(pend)
                 pend = h
+            elif pend and max(pend["e"], h["e"]) - min(pend["s"], h["s"]) + 1 <= MAX_SPAN:
+                units.append(dict(type="complete", strand=strand, ter=pend, ori=h)); pend = None
             else:
-                if pend and max(pend["e"], h["e"]) - min(pend["s"], h["s"]) + 1 <= MAX_SPAN:
-                    units.append(dict(contig=contig, strand=strand, type="complete",
-                                      ter=pend, ori=h,
-                                      s=min(pend["s"], h["s"]), e=max(pend["e"], h["e"])))
-                else:
-                    if pend: orphan(pend)
-                    orphan(h)
-                pend = None
-        if pend: orphan(pend)
-
-# --- regroupement en tandems ---
-groups = []
-for contig in by:
+                if pend: orphans.append(pend); pend = None
+                orphans.append(h)
+        if pend: orphans.append(pend)
+        orphans.sort(key=(lambda h: h["s"]) if strand == "+" else (lambda h: -h["e"]))
+        used = set()
+        for a, b in zip(orphans, orphans[1:]):
+            if a["kind"] == "ORI" and b["kind"] == "TER":
+                gap = (b["s"] - a["e"] - 1) if strand == "+" else (a["s"] - b["e"] - 1)
+                if -10 <= gap <= JUNC_GAP:
+                    units.append(dict(type="junction_donor", strand=strand, ori=a, ter=b)); used |= {id(a), id(b)}
+        for h in orphans:
+            if id(h) not in used:
+                units.append(dict(type=h["kind"].lower() + "_only", strand=strand,
+                                  ori=h if h["kind"] == "ORI" else None, ter=h if h["kind"] == "TER" else None))
+    # --- tandems ---
+    arrays = []
     for strand in "+-":
-        us = [u for u in units if u["contig"] == contig and u["strand"] == strand
-              and u["type"] == "complete"]
-        us.sort(key=(lambda u: u["s"]) if strand == "+" else (lambda u: -u["e"]))
-        cur = []
+        us = [u for u in units if u["type"] == "complete" and u["strand"] == strand]
+        key = (lambda u: u["ter"]["lo"]) if strand == "+" else (lambda u: -u["ter"]["hi"])
+        us.sort(key=key); cur = []
         for u in us:
             if cur:
                 p = cur[-1]
-                gap = u["s"] - p["e"] - 1 if strand == "+" else p["s"] - u["e"] - 1
-                if -10 <= gap <= TANDEM_GAP:
-                    cur.append(u); continue
-                groups.append(cur)
+                gap = (u["ter"]["lo"] - p["ori"]["hi"]) if strand == "+" else (p["ori"]["lo"] - u["ter"]["hi"])
+                if -10 <= gap <= TANDEM_GAP: cur.append(u); continue
+                arrays.append(cur)
             cur = [u]
-        if cur: groups.append(cur)
-for u in units:
-    if u["type"] != "complete": groups.append([u])
+        if cur: arrays.append(cur)
+    asg = assign.get(cname, "NA")
+    on = "NA" if exp_t == "NA" or asg == "NA" else ("yes" if exp_t == asg else "no")
+    base = [bc, is_type, exp_t, passage, brep, clone, cname, len(seq), asg, on]
 
-# --- cartographie des flancs sur les références ---
-fq = open(f"{tmp}/flanks.fa", "w")
-for gi, g in enumerate(groups):
-    sq = seqs[g[0]["contig"]]
-    a_s, a_e = min(u["s"] for u in g), max(u["e"] for u in g)
-    L, R = sq[max(0, a_s - 1 - FLANK):a_s - 1], sq[a_e:a_e + FLANK]
-    if len(L) >= 30: fq.write(f">{gi}_L\n{L}\n")
-    if len(R) >= 30: fq.write(f">{gi}_R\n{R}\n")
-fq.close()
-best = {}
-if os.path.getsize(f"{tmp}/flanks.fa") > 0:
-    o = subprocess.run(["blastn", "-query", f"{tmp}/flanks.fa", "-db", REFDB, "-evalue", "1e-10",
-                        "-outfmt", "6 qseqid qlen sseqid pident length qstart qend sstart send bitscore"],
-                       capture_output=True, text=True, check=True).stdout
-    for l in o.splitlines():
-        f = l.split("\t"); q = f[0]; ql = int(f[1]); pid = float(f[3])
-        qs, qe, ss, se, bit = int(f[5]), int(f[6]), int(f[7]), int(f[8]), float(f[9])
-        if pid < MIN_ID: continue
-        side = q.split("_")[1]
-        if side == "L" and qe < ql - 5: continue   # doit toucher l'insertion
-        if side == "R" and qs > 5: continue
-        pos = se if side == "L" else ss
-        if q not in best or bit > best[q][0]:
-            best[q] = (bit, f[2], pos, "+" if ss <= se else "-")
+    for ai, arr in enumerate(arrays, 1):
+        st = arr[0]["strand"]
+        if st == "+": a_lo, a_hi = arr[0]["ter"]["lo"], arr[-1]["ori"]["hi"]
+        else:         a_lo, a_hi = arr[-1]["ori"]["lo"], arr[0]["ter"]["hi"]
+        if st == "+": Lf, Rf = seq[max(0, a_lo - FLANK):a_lo], seq[a_hi:a_hi + FLANK]
+        else:         Lf, Rf = rc(seq[a_hi:a_hi + FLANK]), rc(seq[max(0, a_lo - FLANK):a_lo])
+        lm, rm = map_flank(Lf, "L"), map_flank(Rf, "R")
+        lc, rc_ = fl_class(lm, Lf), fl_class(rm, Rf)
+        span = a_hi - a_lo; n = len(arr)
+        ref_gap, ins_ref = "NA", "NA"
+        if lm and rm and lm["ref"] == rm["ref"] and lm["strand"] == rm["strand"]:
+            ref_gap = (rm["pos"] - lm["pos"] - 1) if lm["strand"] == "+" else (lm["pos"] - rm["pos"] - 1)
+        hm = lm or rm
+        if hm: ins_ref = SN[hm["strand"]]
+        extra = span - n * expected if isinstance(expected, int) else None
+        if lc == "donor": oet = "yes"
+        elif lc in ("unmapped", "edge") and extra is not None and extra > 100: oet = "maybe"
+        else: oet = "no"
+        if n > 1: ecl = "tandem"
+        elif oet == "yes": ecl = "OET"
+        elif oet == "maybe": ecl = "OET_candidate"
+        elif lc == "target" and rc_ == "target":
+            ecl = "simple" if ref_gap != "NA" and abs(ref_gap) <= 6 else "rearranged_junction"
+        else: ecl = "other_junction"
+        ordered = arr
+        for ci, u in enumerate(ordered, 1):
+            t, o = u["ter"], u["ori"]
+            if st == "+":
+                s_, e_ = t["lo"] + 1, o["hi"]; inner = seq[t["e"]:o["s"] - 1]; tail = seq[o["hi"] - 4:o["hi"]]
+                up, dn = seq[max(0, s_ - 11):s_ - 1], seq[e_:e_ + 10]
+            else:
+                s_, e_ = o["lo"] + 1, t["hi"]; inner = rc(seq[o["e"]:t["s"] - 1]); tail = rc(seq[o["lo"]:o["lo"] + 4])
+                up, dn = rc(seq[e_:e_ + 10]), rc(seq[max(0, s_ - 11):s_ - 1])
+            ln = e_ - s_ + 1
+            rows.append(base + [ecl, oet, ai, ci, n, SN[st], s_, e_, t["s"], t["e"], o["s"], o["e"], ln,
+                                expected, (ln - expected) if isinstance(expected, int) else "NA", len(inner),
+                                a_lo + 1, a_hi, rc(tail), tail, lc, fmt_map(lm), rc_, fmt_map(rm), ref_gap,
+                                ins_ref, up, dn, inner])
+    for u in units:
+        if u["type"] == "complete": continue
+        h = u["ter"] or u["ori"]
+        t, o = u["ter"], u["ori"]
+        rows.append(base + [u["type"], "NA", "NA", 1, 1, SN[u["strand"]],
+                            min(x["s"] for x in (t, o) if x), max(x["e"] for x in (t, o) if x),
+                            t["s"] if t else "NA", t["e"] if t else "NA", o["s"] if o else "NA", o["e"] if o else "NA",
+                            "NA", expected, "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA",
+                            "NA", "NA", "NA", "NA"])
 
-# --- sorties ---
-os.makedirs("analysis/is91", exist_ok=True)
-fa = open(f"analysis/is91/{bc}.fa", "w")
-rows = []
-for gi, g in enumerate(groups):
-    contig = g[0]["contig"]; sq = seqs[contig]
-    a_s, a_e = min(u["s"] for u in g), max(u["e"] for u in g)
-    strand = g[0]["strand"]
-    lb, rb = best.get(f"{gi}_L"), best.get(f"{gi}_R")
-    ref_left = f"{lb[1]}:{lb[2]}" if lb else "NA"
-    ref_right = f"{rb[1]}:{rb[2]}" if rb else "NA"
-    hs = (lb or rb)
-    ref_strand = "NA" if not hs else (strand if hs[3] == "+" else ("-" if strand == "+" else "+"))
-    ordered = sorted(g, key=(lambda u: u["s"]) if strand == "+" else (lambda u: -u["e"]))
-    for ci, u in enumerate(ordered, 1):
-        s, e = u["s"], u["e"]
-        t, o_ = u["ter"], u["ori"]
-        if u["type"] == "complete":
-            inner = sq[t["e"]:o_["s"] - 1] if strand == "+" else rc(sq[o_["e"]:t["s"] - 1])
-            insert = sq[s - 1:e] if strand == "+" else rc(sq[s - 1:e])
-            span, inl = e - s + 1, len(inner)
-            fa.write(f">{bc}|{contig}|{s}-{e}|{strand}|{span}bp\n{insert}\n")
-        else:
-            inner, span, inl = "NA", "NA", "NA"
-        if strand == "+":
-            up, down = sq[max(0, s - 1 - SHORT):s - 1], sq[e:e + SHORT]
-        else:
-            up, down = rc(sq[e:e + SHORT]), rc(sq[max(0, s - 1 - SHORT):s - 1])
-
-        SN = {"+": "plus", "-": "minus"}
-        strand_lbl = SN[strand]
-        ref_strand_lbl = SN[ref_strand]
-        asg, ist, tgt = meta.get((bc, contig), ("NA", "NA", "NA"))
-        on = "yes" if (("pXO38" in tgt and asg == "pOX38Km") or
-                       ("Chromosome" in tgt and asg == "chromosome")) else "no"
-        rows.append([bc, contig, len(sq), asg, ist, tgt, on, u["type"],
-                     gi + 1, ci, len(g), strand_lbl, s, e,
-                     t["s"] if t else "NA", t["e"] if t else "NA",
-                     o_["s"] if o_ else "NA", o_["e"] if o_ else "NA",
-                     span, inl, a_s, a_e, up, down, down[:4],
-                     ref_left, ref_right, ref_strand_lbl, inner])
-for r in sorted(rows, key=lambda r: (r[1], r[12])):
+def sk(r):
+    v = r[16]; return (r[6], int(v) if str(v).isdigit() else 0)
+for r in sorted(rows, key=sk):
     print("\t".join(map(str, r)))
