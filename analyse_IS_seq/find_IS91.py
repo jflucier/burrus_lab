@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""find_IS91.py v2 -- localise les insertions IS91 (ter ... ori) dans les contigs d'un barcode.
+"""find_IS91.py v3 -- localise les insertions IS91 (ter ... ori) et les copies du phage Mu dans les contigs d'un barcode.
 Python seul (pas de BLAST). Usage:
-    find_IS91.py --header
+    find_IS91.py --header | --header-mu
     find_IS91.py BARCODE contigs.fa  > analysis/is91/BARCODE.tsv
 Lit analysis/samples.tsv et analysis/contig_assignment_meta.tsv (variable IS91_ANALYSIS pour changer le dossier).
+Mu: si sequences/Mu.fa existe, les copies de Mu sont détectées (écrites dans analysis/mu/BARCODE.tsv) et
+les colonnes mu_in_contig / mu_dist sont ajoutées à la table des insertions IS91.
 Conventions: tout est exprimé dans le sens de l'IS (ter -> ori). strand 'plus' = ter->ori vers les
 coordonnées croissantes du contig. Coordonnées 1-based incluses."""
-import sys, os, csv
+import sys, os, csv, re
 from collections import defaultdict
 
 SEQDIR = os.environ.get("IS91_SEQDIR", "sequences")
 ANA = os.environ.get("IS91_ANALYSIS", "analysis")
 REF_FILES = [("CHR", "GCF_056501015.1_ASM5650101v1_genomic.fna"), ("POX38", "pOX38Km.fa"),
-             ("pCP54", "pCP54.fa"), ("pCP55", "pCP55.fa"), ("pCP7", "pCP7.fa")]
+             ("pCP54", "pCP54.fa"), ("pCP55", "pCP55.fa"), ("pCP7", "pCP7.fa"), ("MU", "Mu.fa")]
 TARGETS, DONORS = {"CHR", "POX38"}, {"pCP54", "pCP55", "pCP7"}
 EXPECTED = {"pCP7": 945, "pCP54": 1988, "pCP55": 1988}   # ter(début) -> ori(fin) attendu (ori recouvre ter de 4 nt dans pCP54/55)
 TARGET_MAP = {"pxo38km": "pOX38Km", "pox38km": "pOX38Km", "ecoli_chr": "chromosome"}
@@ -29,9 +31,14 @@ COLS = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "cont
         "ins_start", "ins_end", "ter_start", "ter_end", "ori_start", "ori_end", "ter_to_ori_len",
         "expected_len", "len_vs_expected", "inner_len", "arr_start", "arr_end", "target_4nt", "ori_tail4",
         "left_class", "left_map", "right_class", "right_map", "ref_gap", "ref_gap_seq", "ins_strand_on_ref", "array_open",
-        "upstream_10nt", "downstream_10nt", "inner_seq"]
+        "mu_in_contig", "mu_dist", "upstream_10nt", "downstream_10nt", "inner_seq"]
+MU_COLS = ["barcode", "is_type", "exp_target", "passage", "bio_rep", "clone", "contig", "contig_len",
+           "mu_start", "mu_end", "mu_len", "mu_strand", "mu_cov", "inverted_bp", "state", "left_map", "right_map",
+           "tsd_len", "tsd_seq", "site_ref", "site_start", "site_end", "n_mu_in_contig", "snp_profile", "snp_diff"]
 if len(sys.argv) > 1 and sys.argv[1] == "--header":
     print("\t".join(COLS)); sys.exit()
+if len(sys.argv) > 1 and sys.argv[1] == "--header-mu":
+    print("\t".join(MU_COLS)); sys.exit()
 
 def read_fasta(p):
     d, n = {}, None
@@ -140,6 +147,7 @@ def fmt_map(m): return "NA" if not m else f"{m['label']}:{m['ref']}:{m['pos']}({
 def fl_class(m, flank):
     if len(flank) < 30: return "edge"
     if not m: return "unmapped"
+    if m["label"] == "MU": return "mu"
     return "target" if m["label"] in TARGETS else ("donor" if m["label"] in DONORS else "other")
 
 def reconcile(lm, rm):
@@ -154,6 +162,63 @@ def reconcile(lm, rm):
             g = (g + RL // 2) % RL - RL // 2
             if -10 <= g <= 10 and (best is None or a["nseeds"] + b["nseeds"] > best[0]): best = (a["nseeds"] + b["nseeds"], a, b)
     return (best[1], best[2]) if best else (lm, rm)
+
+# ---------- phage Mu ----------
+KMU = 25
+MU_REF = next((v for k, v in REFSEQ.items() if k.startswith("MU|")), None)
+MU_IDX = {}
+if MU_REF:
+    for i in range(len(MU_REF) - KMU + 1):
+        k = MU_REF[i:i + KMU]
+        MU_IDX.setdefault(k, (i, "+")); MU_IDX.setdefault(rc(k), (i, "-"))
+
+# positions (coordonnées Mu.fa = NC_000929.1) des SNP du Mu des clones par rapport à NCBI (diffseq : 4 SNP)
+MU_SNP_POS = [int(x) for x in re.split(r"[,\s]+", os.environ.get("IS91_MU_SNPS", "790,19272,29509,32841").strip()) if x]
+
+def mu_snps(sub):
+    """Allèle à chaque position SNP (ancrage sur 12 nt de part et d'autre, brin direct ou segment inversé).
+    snp_diff = nombre d'allèles différents de Mu.fa (copie de référence extraite du barcode 07)."""
+    if not MU_REF: return "NA", "NA"
+    out, diff = [], 0
+    for p in MU_SNP_POS:
+        l, r = MU_REF[p - 13:p - 1], MU_REF[p:p + 12]
+        base = "NA"
+        if len(l) == 12 and len(r) == 12:
+            lo = max(0, p - 1 - 300)
+            i = sub.find(l, lo)
+            while i != -1 and i < p + 300:
+                if sub[i + 13:i + 25] == r: base = sub[i + 12]; break
+                i = sub.find(l, i + 1)
+            if base == "NA":                                   # segment inversé : rc(r) base rc(l)
+                j = sub.find(rc(r))                           # le segment inversé est réfléchi : pas de fenêtre
+                while j != -1:
+                    if sub[j + 13:j + 25] == rc(l): base = rc(sub[j + 12]); break
+                    j = sub.find(rc(r), j + 1)
+        if base not in ("NA", MU_REF[p - 1]): diff += 1
+        out.append(f"{p}:{base}")
+    return ",".join(out), diff
+
+def mu_scan(seq):
+    """Copies de Mu dans un contig : intervalles denses en 25-mers de Mu (>= 5 kb)."""
+    if not MU_IDX: return []
+    get, hits = MU_IDX.get, []
+    for i in range(len(seq) - KMU + 1):
+        h = get(seq[i:i + KMU])
+        if h: hits.append((i, h[0], h[1]))
+    copies, cur = [], []
+    def close():
+        if not cur: return
+        span = cur[-1][0] - cur[0][0] + KMU
+        if span >= 5000 and len(cur) >= 0.5 * span:
+            plus = sum(1 for x in cur if x[2] == "+"); minus = len(cur) - plus
+            copies.append(dict(lo=cur[0][0], hi=cur[-1][0] + KMU, span=span,
+                               strand="+" if plus >= minus else "-", minor=min(plus, minus),
+                               cov=len({x[1] for x in cur}) / (len(MU_REF) - KMU + 1)))
+    for h in hits:
+        if cur and h[0] - cur[-1][0] > 300: close(); cur = []
+        cur.append(h)
+    close()
+    return copies
 
 # ---------- métadonnées ----------
 bc, fasta = sys.argv[1], sys.argv[2]
@@ -175,6 +240,43 @@ ORI = list(read_fasta(os.path.join(SEQDIR, "ori.fa")).values())[0]
 TER = list(read_fasta(os.path.join(SEQDIR, "ter.fa")).values())[0]
 contigs = read_fasta(fasta)
 rows = []
+
+MU_BY_CONTIG, mu_rows = {}, []
+for cname, seq in contigs.items():
+    cps = mu_scan(seq)
+    if not cps: continue
+    MU_BY_CONTIG[cname] = cps
+    for c in cps:
+        clen, mlen = len(seq), c["hi"] - c["lo"]
+        lm = rm = None; tsd_len, tsd_seq, site = "NA", "NA", ["NA", "NA", "NA"]
+        if clen <= mlen * 1.2: state = "free"
+        elif c["lo"] >= 500 and clen - c["hi"] >= 500:
+            state = "integrated"
+            Lf, Rf = seq[max(0, c["lo"] - FLANK):c["lo"]], seq[c["hi"]:c["hi"] + FLANK]
+            lm, rm = reconcile(map_flank(Lf, "L"), map_flank(Rf, "R"))
+            if lm and rm and (lm["label"], lm["ref"], lm["strand"]) == (rm["label"], rm["ref"], rm["strand"]):
+                RL = len(REFSEQ[lm["label"] + "|" + lm["ref"]])
+                g = (rm["pos"] - lm["pos"] - 1) if lm["strand"] == "+" else (lm["pos"] - rm["pos"] - 1)
+                g = (g + RL // 2) % RL - RL // 2
+                tsd_len = -g if -12 <= g < 0 else 0
+                tsd_seq = Lf[-tsd_len:] if tsd_len else "NA"
+                site = [f"{lm['label']}:{lm['ref']}", min(lm["pos"], rm["pos"]), max(lm["pos"], rm["pos"])]
+            elif lm or rm:
+                hm_ = lm or rm; site = [f"{hm_['label']}:{hm_['ref']}", hm_["pos"], hm_["pos"]]
+        else: state = "integrated_edge"
+        mu_rows.append([bc, is_type, exp_t, passage, brep, clone, cname, clen, c["lo"] + 1, c["hi"], mlen,
+                        SN[c["strand"]], f"{c['cov']:.2f}", c["minor"] if c["minor"] >= 500 else 0, state,
+                        fmt_map(lm), fmt_map(rm), tsd_len, tsd_seq] + site + [len(cps)] +
+                       list(mu_snps(seq[c["lo"]:c["hi"]] if c["strand"] == "+" else rc(seq[c["lo"]:c["hi"]]))))
+if MU_IDX and mu_rows:
+    os.makedirs(os.path.join(ANA, "mu"), exist_ok=True)
+    with open(os.path.join(ANA, "mu", f"{bc}.tsv"), "w") as fh:
+        for r in mu_rows: fh.write("\t".join(map(str, r)) + "\n")
+
+def mu_cols(cname, lo0, hi0):
+    cps = MU_BY_CONTIG.get(cname, [])
+    if not cps: return [0, "NA"]
+    return [len(cps), min(max(0, c["lo"] - hi0, lo0 - c["hi"]) for c in cps)]
 
 for cname, seq in contigs.items():
     hits = find_hits(seq, ORI, "ORI") + find_hits(seq, TER, "TER")
@@ -272,6 +374,7 @@ for cname, seq in contigs.items():
         elif lc == "target" and rc_ == "target":
             if ref_gap != "NA" and abs(ref_gap) <= 6: ecl = "simple"
             else: ecl = "repeat_site" if amb else "rearranged_junction"
+        elif "mu" in (lc, rc_): ecl = "mu_junction"
         else: ecl = "other_junction"
         ordered = arr
         for ci, u in enumerate(ordered, 1):
@@ -286,17 +389,19 @@ for cname, seq in contigs.items():
             rows.append(b + [ecl, oet, ai, ci, n, SN[st], s_, e_, t["s"], t["e"], o["s"], o["e"], ln,
                                 expected, (ln - expected) if isinstance(expected, int) else "NA", len(inner),
                                 a_lo + 1, a_hi, rc(tail), tail, lc, fmt_map(lm), rc_, fmt_map(rm), ref_gap,
-                                gseq, ins_ref, aopen, up, dn, inner])
+                                gseq, ins_ref, aopen] + mu_cols(cname, a_lo, a_hi) + [up, dn, inner])
     for u in units:
         if u["type"] == "complete": continue
         h = u["ter"] or u["ori"]
         t, o = u["ter"], u["ori"]
-        rows.append(base + [u["type"], "NA", "NA", 1, 1, SN[u["strand"]],
-                            min(x["s"] for x in (t, o) if x), max(x["e"] for x in (t, o) if x),
-                            t["s"] if t else "NA", t["e"] if t else "NA", o["s"] if o else "NA", o["e"] if o else "NA",
-                            "NA", expected, "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA", "NA",
-                            "NA", "NA", "NA", "NA", "NA", "NA"])
+        d = dict(zip(COLS, base)); lo0 = min(x["s"] for x in (t, o) if x) - 1; hi0 = max(x["e"] for x in (t, o) if x)
+        d.update(event_class=u["type"], copy_index=1, n_copies=1, strand=SN[u["strand"]], ins_start=lo0 + 1, ins_end=hi0,
+                 ter_start=t["s"] if t else "NA", ter_end=t["e"] if t else "NA",
+                 ori_start=o["s"] if o else "NA", ori_end=o["e"] if o else "NA", expected_len=expected)
+        d["mu_in_contig"], d["mu_dist"] = mu_cols(cname, lo0, hi0)
+        rows.append([d.get(c, "NA") for c in COLS])
 
+for r in rows: assert len(r) == len(COLS), (len(r), len(COLS))
 def sk(r):
     v = r[16]; return (r[6], int(v) if str(v).isdigit() else 0)
 for r in sorted(rows, key=sk):
