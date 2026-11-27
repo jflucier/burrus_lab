@@ -123,19 +123,37 @@ def map_flank(seq, side):
     allc.sort(key=lambda x: -x[0])
     _, nbest, key, strand, c = allc[0]
     if nbest < 2: return None
-    nloci = sum(1 for x in allc if x[1] >= 0.8 * nbest)           # >1 : séquence répétée, position ambiguë
-    diag, _ = (max(c, key=lambda x: x[1]) if side == "L" else min(c, key=lambda x: x[1]))
-    if strand == "+": pos = n + diag if side == "L" else diag + 1
-    else:             pos = diag + 1 if side == "L" else n + diag
-    lab, name = key.split("|", 1)
-    pos = (pos - 1) % len(REFSEQ[key]) + 1                         # références circulaires
-    return dict(label=lab, ref=name, strand=strand, pos=pos, nseeds=len(c), nloci=nloci)
+    near = [x for x in allc if x[1] >= 0.8 * nbest]
+    nloci = len(near)                                              # >1 : séquence répétée, position ambiguë
+    def mk(x):
+        _, nb, k, st, cc = x
+        diag, _o = (max(cc, key=lambda y: y[1]) if side == "L" else min(cc, key=lambda y: y[1]))
+        if st == "+": ps = n + diag if side == "L" else diag + 1
+        else:         ps = diag + 1 if side == "L" else n + diag
+        ps = (ps - 1) % len(REFSEQ[k]) + 1                         # références circulaires
+        lb, nm = k.split("|", 1)
+        return dict(label=lb, ref=nm, strand=st, pos=ps, nseeds=nb, nloci=nloci)
+    out = mk(allc[0]); out["alts"] = [mk(x) for x in near]
+    return out
 
 def fmt_map(m): return "NA" if not m else f"{m['label']}:{m['ref']}:{m['pos']}({m['strand']},{m['nseeds']}s,{m['nloci']}loci)"
 def fl_class(m, flank):
     if len(flank) < 30: return "edge"
     if not m: return "unmapped"
     return "target" if m["label"] in TARGETS else ("donor" if m["label"] in DONORS else "other")
+
+def reconcile(lm, rm):
+    """Si un flanc est ambigu (répétition), choisit les loci des deux flancs qui sont consécutifs."""
+    if not lm or not rm: return lm, rm
+    best = None
+    for a in lm["alts"]:
+        for b in rm["alts"]:
+            if (a["label"], a["ref"], a["strand"]) != (b["label"], b["ref"], b["strand"]): continue
+            RL = len(REFSEQ[a["label"] + "|" + a["ref"]])
+            g = (b["pos"] - a["pos"] - 1) if a["strand"] == "+" else (a["pos"] - b["pos"] - 1)
+            g = (g + RL // 2) % RL - RL // 2
+            if -10 <= g <= 10 and (best is None or a["nseeds"] + b["nseeds"] > best[0]): best = (a["nseeds"] + b["nseeds"], a, b)
+    return (best[1], best[2]) if best else (lm, rm)
 
 # ---------- métadonnées ----------
 bc, fasta = sys.argv[1], sys.argv[2]
@@ -212,6 +230,7 @@ for cname, seq in contigs.items():
         if st == "+": Lf, Rf = seq[max(0, a_lo - FLANK):a_lo], seq[a_hi:a_hi + FLANK]
         else:         Lf, Rf = rc(seq[a_hi:a_hi + FLANK]), rc(seq[max(0, a_lo - FLANK):a_lo])
         lm, rm = map_flank(Lf, "L"), map_flank(Rf, "R")
+        lm, rm = reconcile(lm, rm)
         lc, rc_ = fl_class(lm, Lf), fl_class(rm, Rf)
         span = a_hi - a_lo; n = len(arr)
         ml = (lm or rm or {}).get("label")
@@ -238,7 +257,8 @@ for cname, seq in contigs.items():
                 ext = fw + fw
                 gseq = ext[lm["pos"]:lm["pos"] + ref_gap] if lm["strand"] == "+" else \
                        rc(ext[RL + lm["pos"] - 1 - ref_gap:RL + lm["pos"] - 1])
-        amb = bool((lm and lm["nloci"] > 1) or (rm and rm["nloci"] > 1))
+        if lm and rm: amb = bool(lm["nloci"] > 1 and rm["nloci"] > 1)       # ambigu seulement si les deux le sont
+        else: amb = bool((lm or rm or {}).get("nloci", 1) > 1)
         hm = lm or rm
         if hm: ins_ref = SN[hm["strand"]]
         extra = span - n * expected if isinstance(expected, int) else None
